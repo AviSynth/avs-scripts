@@ -21,7 +21,7 @@ Requirements:
 function maa2(clip c, int "mask", bool "chroma", int "ss", int "aa", int "threads", int "show") 
 {
     chroma = Default(chroma, false)   # Process chroma channels [true]/false
-    mask = Default(mask, 1)           # [1]: Enable masking   0: Disable masking   -i: Enable masking with, custome treshold (sensible values are  between 0 and 30)
+    mask = Default(mask, 1)           # [1]: Enable masking   0: Disable masking   -i: Enable masking with custom treshold (sensible values are  between 0 and 30)
     threads = Default(threads, 4)     # Number of threads to use for SangNom2
     aa = Default(aa, 48)              # SangNom2 antialialising strength
     mtresh = (mask < 0) ? -mask : 7 
