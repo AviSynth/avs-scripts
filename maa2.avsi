@@ -30,7 +30,7 @@ Parameters:
        *   Supersampling factor (sensible values are between 2.0 and 4.0 for HD content)
    + [int] aa (48)
        *   Sangnom2 luma antialiasing strength
-   + [int] aac (aa)
+   + [int] aac (aa-8)
        *   Sangnom2 chroma antialiasing strength
    + [int] threads (4)
        *   Number of threads used by every Sangnom2 instance
@@ -74,7 +74,7 @@ function Sangnom2AA(clip c, float "ss", int "aa", int "aac", int "threads")
     threads = Default(threads, 4)     
     aa = Default(aa, 48)
     aac = Default(aac, aa-8)
-    aac = (aac.Sign<0) ? 0 : aac 
+    aac = (aac<0) ? 0 : aac 
     ss = Default(ss, 2.0)
     ss_w = int(round(c.width*ss/4.0)*4)
     ss_h = int(round(c.height*ss/4.0)*4)
