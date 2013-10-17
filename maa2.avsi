@@ -1,5 +1,5 @@
 /*
-MAA2 v0.4
+MAA2 v0.41
 =========
 
 Updated version of the MAA antialising script from AnimeIVTC. 
@@ -54,7 +54,7 @@ function maa2(clip c, int "mask", bool "chroma", float "ss", int "aa", int "aac"
 
     m = (mask != 0) ? c.mt_edge("sobel", mtresh, mtresh, mtresh-6, mtresh-6, u=uv, v=uv).mt_inflate(u=uv, v=uv) : nop()
 
-    c_aa = (chroma && show == 0) ? c.Sangnom2AA(ss, aa, aac, threads) : c.ConvertToY8().Sangnom2AA(ss, aa, threads=threads)
+    c_aa = (chroma && show == 0) ? c.Sangnom2AA(ss, aa, aac, threads) : c.ConvertToY8().Sangnom2AA(ss, aa, threads=threads).Subtitle("test")
 
     c_aa = (show == 1) ? (c.IsY8) ? c_aa.ConvertToYV12().mt_lut(y=2, u=0, v=0)
                               \ : c.mt_lut("x 2 /", y=2, u=3, v=3)
@@ -66,7 +66,7 @@ function maa2(clip c, int "mask", bool "chroma", float "ss", int "aa", int "aac"
                                               \ : mt_merge(c.ConvertToYV12(), c_aa, m, u=3, v=3, luma=true)
                     \ : (chroma) ? mt_merge(c, c_aa, m, u=3, v=3)
                     \ : mt_merge(c, c_aa, m, u=2, v=2)
-      \ :  c_aa.MergeChroma(c)
+      \ : c.mt_logic(c_aa,"and", y=4, u=2, v=2)
 }
 
 function Sangnom2AA(clip c, float "ss", int "aa", int "aac", int "threads")
