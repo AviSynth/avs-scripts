@@ -54,7 +54,7 @@ function maa2(clip c, int "mask", bool "chroma", float "ss", int "aa", int "aac"
 
     m = (mask != 0) ? c.mt_edge("sobel", mtresh, mtresh, mtresh-6, mtresh-6, u=uv, v=uv).mt_inflate(u=uv, v=uv) : nop()
 
-    c_aa = (chroma && show == 0) ? c.Sangnom2AA(ss, aa, aac, threads) : c.ConvertToY8().Sangnom2AA(ss, aa, threads=threads).Subtitle("test")
+    c_aa = (chroma && show == 0) ? c.Sangnom2AA(ss, aa, aac, threads) : c.ConvertToY8().Sangnom2AA(ss, aa, threads=threads)
 
     c_aa = (show == 1) ? (c.IsY8) ? c_aa.ConvertToYV12().mt_lut(y=2, u=0, v=0)
                               \ : c.mt_lut("x 2 /", y=2, u=3, v=3)
