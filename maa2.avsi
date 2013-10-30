@@ -50,7 +50,7 @@ function maa2(clip c, int "mask", bool "chroma", float "ss", int "aa", int "aac"
     uv = (chroma) ? 3 : 1
 
     Assert(c.IsY8 || c.IsYV12 || c.IsYV24, "MAA2: Input must be Y8, YV12 or YV24")
-
+    Assert(0 <= show <= 2, "MAA2: Parameter 'show' must be between 0 and 2")
 
     m = (mask != 0) ? c.mt_edge("sobel", mtresh, mtresh, mtresh-6, mtresh-6, u=uv, v=uv).mt_inflate(u=uv, v=uv) : nop()
 
