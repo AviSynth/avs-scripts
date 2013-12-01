@@ -1,3 +1,6 @@
+# Lazy Utilities v0.0.1
+# too lazy to write a readme
+
 function LuStackedNto16(clip c, int n)
 {
     Assert(8 <= n <= 15, "LuStackedNto16: bitdepth should be in range 8-15")
@@ -123,4 +126,280 @@ function LuMatchCSP(clip c, clip refc, string "matrix", bool "tv_range")
     mstr = (tv_range) ? "Rec"+matrix : "PC."+matrix
     csp = refc.PixelType
     return eval("c.ConvertTo" + csp + """(matrix="""" + mstr + """")""")
+}
+
+Function LU8To16(clip c, bool "tv_range", bool "Y", bool "U", bool "V")
+{
+    # shamelessly copy-pasted from nnedi3_resize16 by mawen1250
+    
+    tv_range = Default(tv_range, True   ) # define if input clip is of tv range(limited range)
+    Y        = Default(Y,        True   )
+    U        = Default(U,        True   )
+    V        = Default(V,        True   )
+       
+    yExpr    = "0-0;255-65535;65535-65535"
+    cExpr    = "0-0;128-32768;255-65535;65535-65535"
+    DfExpr   = "0-0;65535-65535"
+    Yexpr    = Y ? yExpr : DfExpr
+    Uexpr    = U ? cExpr : DfExpr
+    Vexpr    = V ? cExpr : DfExpr
+      
+    if (tv_range) { up = c.Dither_convert_8_to_16() }
+    else
+    {
+        up = StackVertical(c.Dither_gen_null_lsb(), c)
+        up = (Y||U||V) ? up.SmoothCurve16(Ycurve=Yexpr, Ucurve=Uexpr, Vcurve=Vexpr, mode=0,
+                                        \ limiter=False, TVrange=0, interp=0, dither=-1) : up
+        
+    } 
+    return up
+}
+
+Function Lu16To8(clip c, bool "tv_range", bool "Y", bool "U", bool "V", int "dither", int "interp", bool "HQ")
+{
+    # again shamelessly copy-pasted from nnedi3_resize16 by mawen1250
+    
+    dither = Default(dither, 6)
+    Assert(-1 < dither < 8 , "Lu16To8: parameter 'dither' must be between -1 and 8.")
+    
+    tv_range = Default(tv_range, True   ) # define if input clip is of tv range(limited range)
+    interp   = Default( interp,     0   ) # use interp or not for Curve/SmoothCurve16
+    HQ       = Default( HQ,     False   ) # enable high quality interpolation (slower)
+    Y        = Default(Y,        True   )
+    U        = Default(U,        True   )
+    V        = Default(V,        True   )
+   
+    
+    if(tv_range)
+    {
+        c.DitherPost(mode=dither, y=Y?3:1, u=U?3:1, v=V?3:1)
+    }
+    else if (Y || U || V)
+    {
+        damnt = Select(dither+1, -1, 25, 50, 50, 50, 50, 50, 50, 50, 50)  # todo: find rougly matching patterns for all modes
+    
+        yExpr    = "0-0;65535-255"
+        cExpr    = "0-0;32768-128;65535-255"
+        DfExpr   = "0-0;65535-65535"
+        Yexpr    = Y ? yExpr : DfExpr
+        Uexpr    = U ? cExpr : DfExpr
+        Vexpr    = V ? cExpr : DfExpr
+        
+        c.SmoothCurve16(Ycurve=Yexpr, Ucurve=Uexpr, Vcurve=Vexpr, mode=0, interp=interp, HQ=HQ, 
+                      \ dither=damnt, limiter=False, TVrange=0).Dither_get_lsb()
+    }
+    else { c.Dither_get_msb() }
+    
+    return last
+}
+
+function LUIsEq(val s, string t, bool "idx")
+{
+    idx = Default(idx, false)
+    if (s.Defined)
+    {
+        s = !s.IsString ? String(s) : s
+        result = false
+        i = -1
+        while(!result && FindStr(t,"||") != 0)
+        {
+            pos = FindStr(t,"||")
+            result = result || (s == LeftStr(t, pos-1))
+            t = MidStr(t,pos+2)
+            i = i+1
+        }
+        return idx ? i : result
+    }
+    else { return idx ? -2 : false }
+}
+
+function LuSubstrAtIdx(string s, int idx, string "sep")
+{
+    sep = Default(sep, ",")
+    s = (RightStr(s, 1) == sep) ? s : s+sep
+    for(i=0, idx)
+    {
+        pos = FindStr(s, sep)
+        Assert(pos > 0, "LuSubstringAtIndex: no string at index '" + String(idx) +"'.")
+        sstr = LeftStr(s, pos-1)
+        s = MidStr(s, pos+StrLen(sep))
+    }
+    return sstr
+}
+
+function LuSubstrCnt(string s, string "sep")
+{
+    sep = Default(sep, ",")
+    s = (RightStr(s, 1) == sep) || (StrLen(s) == 0) ? s : s+sep
+    i = 0
+    while(Findstr(s, sep) > 0)
+    {
+        i = i + 1
+        pos = FindStr(s, sep)
+        s = MidStr(s, pos+StrLen(sep))
+    }
+    return i
+}
+
+function LuReplaceStr(string s, string find, string replace)
+{
+    if (find != replace)
+    {
+        while(FindStr(s, find) > 0)
+        {
+            pos = FindStr(s, find)
+            s = LeftStr(s, pos-1) + replace + MidStr(s, pos + StrLen(find))
+        }
+    }
+    return s
+}
+
+function LUIsDefined(string mode, val v0, val "v1", val "v2", val "v3", val "v4", val "v5", val "v6", val "v7", val "v8", val "v9", val "v10",
+                   \ val "v11", val "v12", val "v13", val "v14", val "v15", val "v16", val "v17", val "v18", val "v19")
+{
+    Assert(mode == "or" || mode == "and", "LUIsDefined: mode must be 'or' or 'and'")
+    
+    result = (mode == "and") ? true : false
+    mstr   = (mode == "and") ? "&&"  : "||"
+    for(i=0, 19) 
+    {
+        eval("result = result " + mstr + " Defined(v" + String(i) + ")") 
+    }
+    return result
+}
+
+
+# unfinished, do not use, yet
+function LUResize(clip c, int "width", int "height", float "src_left", float "src_top", float "src_width", float "src_height",
+               \  bool "lsb_in", bool "lsb_out", bool "lsb", string "kernel", string "matrix", bool "tv_range", bool "precise", 
+               \  bool "noring", float "fh", float "fv", int "taps", float "a1", float "a2", float "a3", int "kovrspl",
+               \  bool "cnorm", bool "center", string "cplace",	int "y", int "u", int "v", string "kernel_h", string "kernel_v",
+               \  float "totalh", float "totalv", bool "invks", bool "invksh", bool "invksv", int "invkstaps", bool "linear", 
+               \  string "curve", int "dither_mode")
+{
+    center = Default(center, true)
+    need_dither = LUIsDefined("or", fh, fv, kovrspl, cnorm, invks, invksh, invksv, linear) || !center ? true : false
+    lsb_in = Default(lsb_in, false)
+    lsb_out = Default(lsb_out, lsb_in)
+    lsb = need_dither ? true : Default(lsb, lsb_in || lsb_out)
+    kernel = Default(kernel, "spline36")
+    kernel_h = Default(kernel_h, kernel)
+    kernel_v = Default(kernel_v, kernel)
+    kernel = (kernel_v == kernel_h) ? kernel_h : Undefined
+    matrix = Default(matrix, (c.Height >= 600) ? "709" : "601")
+    tv_range = Default(tv_range, true)
+    precise = Default(precise, true)
+    noring = Default(noring, false)
+    curve = Default(curve, "709")
+    linear = Default(linear, false)
+    y = Default(y, 3)
+    u = (c.PixelType == "Y8") ? 1 : Default(u, 3)
+    v = Default(v, u)
+    
+    sw = c.Width
+    sh = lsb_in ? c.Height/2 : c.Height
+    ow = Default(width, sw)
+    oh = Default(height, sh)
+    
+    kernel_list = Defined(kernel) ? "kernel" : "kernel_h,kernel_v"
+    
+    sblock = """
+        <KERNEL> = (<KERNEL> == "linear") ? "bilinear" : (<KERNEL> == "gaussian") ? "gauss" 
+               \ : (<KERNEL> == "cubic") ? "bicubic" : <KERNEL>
+        Assert(!Defined(taps) || !LuIsEq(<KERNEL>, "lanczos||blackman||blackmanminlobe||spline||gauss||sinc"),
+             \ "LUResize: kernel '" + <KERNEL> + "' doesn't have a 'taps' parameter")
+        Assert(!need_dither || lsb, 
+             \ "LUResize: parameter 'lsb' may not be false because one or more of the other parameters supplied" 
+             \+"require processing in 16-bit or Dither resizers.")
+        
+        # set up parameters
+        
+        ir_cargs = (current_kernel == "kernel_h" ) ? "src_left, 0, src_width, sh"
+               \ : (current_kernel == "kernel_v" ) ? "0, src_top, width, src_height"
+               \ :                                   "src_left, src_top, src_width, src_height"
+        
+        idx_bicubic = <KERNEL>.LUIsEq("bicubic||catmull-rom||hermite||mitchell-netravali||robidoux||softcubic", true)
+        idx_hastaps = <KERNEL>.LUIsEq("blackman||lanczos||lanczos4||sinc", true)
+        idx_dither  = <KERNEL>.LUIsEq("blackmanminlobe||box||rect||spline||spline144", true)
+        idx_other   = <KERNEL>.LUIsEq("spline16||spline36||spline64||bilinear||point", true)
+        
+        if (idx_bicubic >= 0)
+        {   
+            #                        defaults             catrom    hermite    mitchell   robidoux    softcubic 
+            a1 = Select(idx_bicubic, Default(a1, 1/3.),   0.0,      0.0,       1/3.,      0.3782,     Default(a1, 75.) / 100.         )
+            a2 = Select(idx_bicubic, Default(a2, 1/3.),   0.5,      0.0,       1/3.,      0.3109,     Default(a2, (1-a1)*100) / 100.  )
+            <KERNEL> = "bicubic"
+            ir_args_<KERNEL> = "a1, a2, " + ir_cargs
+        }
+        else if(idx_hastaps >= 0)
+        {
+            #                                        blackman   lanczos   lanczos4   sinc
+            taps = Default(taps, Select(idx_hastaps, 4,         3,        4,         4    ))
+            <KERNEL> = (<KERNEL> == "lanczos4") ? "lanczos" : <KERNEL>
+            ir_args_<KERNEL> = ir_cargs + ", taps"
+        }
+        else if(idx_dither >= 0)
+        {
+            #                                        blminlobe   box/rect   spline   spline144
+            taps = Default(taps, Select(idx_hastaps, 4,          4, 4,      4,       6         ))
+            lsb = true
+            
+        }
+        else if(<KERNEL> == "gauss")
+        {
+            lsb = Defined(taps) ? true : lsb  # taps can only be adjusted in dither
+            ir_args_<KERNEL> = ir_cargs + ", a1"
+        }
+        else if (idx_other >= 0)
+        {
+            ir_args_<KERNEL> = ir_cargs
+        }
+        else if (FindStr(<KERNEL>, "impulse") > 0)
+        {
+            lsb = true
+        }
+        else { Assert(false, "LUResize: kernel '" + <KERNEL> +"' is not supported") }
+    """
+        
+    for(i=0, LuSubstrCnt(kernel_list)-1)
+    {
+        current_kernel = LuSubstrAtIdx(kernel_list, i)
+        eval(LuReplaceStr(sblock, "<KERNEL>", LuSubstrAtIdx(kernel_list, i)))
+    }
+
+    # resize
+    if(lsb)
+    {
+        rsz = noring ? "Dither_resize16nr" : "Dither_resize16"
+        c16 = lsb_in ? c : c.LU8To16(tv_range, y==3, u==3, v==3)
+        c16 = linear ? c16.Dither_y_gamma_to_linear(tv_range, tv_range, curve, y, u, v) : c16
+        eval(rsz+"""(c16, ow, oh, src_left, src_top, src_width, src_height, kernel, fh, fv, taps, a1, a2, a3,
+                      \ kovrspl, cnorm, center, cplace, y, u, v, kernel_h, kernel_v, totalh, totalv,
+                      \ invks, invksh, invkstaps)""")
+        lsb_out ? last : LU16To8(tv_range, y==3, u==3, v==3, dither_mode)
+    }
+    else 
+    {
+        c8 = lsb_in ? c.LU16To8(tv_range, y==3, u==3, v==3, dither_mode) : c
+        if (precise && !Defined(kernel)) {
+            c8.Resize8(ow, sh, src_left, 0, src_width, sh, kernel_h, Undefined, a1, a2, 
+                     \ Undefined, Undefined, noring, Undefined, cplace, y==3, u==3, v==3, false)
+            Resize8(ow, oh, 0, src_top, width, src_height, kernel_v, Undefined, a1, a2, 
+                     \ Undefined, Undefined, noring, Undefined, cplace, y==3, u==3, v==3, false)
+        }
+        else if (precise)
+        {
+            c8.Resize8(ow, oh, src_left, src_top, src_width, src_height, kernel, Undefined, a1, a2, 
+                     \ Undefined, Undefined, noring, Undefined, cplace, y==3, u==3, v==3, false)
+        }
+        else if (!Defined(kernel))
+        {
+            Eval("c8." + kernel_h + "Resize(ow, sh, " + ir_args_kernel_h +")")
+            Eval(kernel_v + "Resize(ow, oh, " + ir_args_kernel_v +")")
+        }
+        else
+        {
+            Eval("c8." + kernel + "Resize(ow, oh, " + ir_args_kernel +")")
+        }
+    }
 }
