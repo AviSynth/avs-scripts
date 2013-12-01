@@ -128,7 +128,7 @@ function LuMatchCSP(clip c, clip refc, string "matrix", bool "tv_range")
     return eval("c.ConvertTo" + csp + """(matrix="""" + mstr + """")""")
 }
 
-Function LU8To16(clip c, bool "tv_range", bool "Y", bool "U", bool "V")
+Function Lu8To16(clip c, bool "tv_range", bool "Y", bool "U", bool "V")
 {
     # shamelessly copy-pasted from nnedi3_resize16 by mawen1250
     
@@ -193,7 +193,7 @@ Function Lu16To8(clip c, bool "tv_range", bool "Y", bool "U", bool "V", int "dit
     return last
 }
 
-function LUIsEq(val s, string t, bool "idx")
+function LuIsEq(val s, string t, bool "idx")
 {
     idx = Default(idx, false)
     if (s.Defined)
@@ -269,7 +269,7 @@ function LUIsDefined(string mode, val v0, val "v1", val "v2", val "v3", val "v4"
 }
 
 
-# unfinished, do not use, yet
+# unfinished, do not use, yet (parameter order will probably change)
 function LUResize(clip c, int "width", int "height", float "src_left", float "src_top", float "src_width", float "src_height",
                \  bool "lsb_in", bool "lsb_out", bool "lsb", string "kernel", string "matrix", bool "tv_range", bool "precise", 
                \  bool "noring", float "fh", float "fv", int "taps", float "a1", float "a2", float "a3", int "kovrspl",
@@ -402,4 +402,28 @@ function LUResize(clip c, int "width", int "height", float "src_left", float "sr
             Eval("c8." + kernel + "Resize(ow, oh, " + ir_args_kernel +")")
         }
     }
+}
+
+
+function LuMerge(clip c1, clip c2, clip mask, int  "y", int "u", int "v", bool "luma", bool "lsb", bool "lsb_mask", bool "scale")
+{
+    # todo: hadle offX, off, w, h; possibly add merging of 16 and 8 bit clip, is this a good idea?
+    lsb = Default(lsb, false)
+    lsb_mask = Default(lsb_mask, false)
+    scale = Default(scale, (y < -256 || u < -256 || v < -256) ? true : false)
+    
+    if(scale)
+    {
+        y = (y < 0) ? y * 256 : y
+        u = (u < 0) ? u * 256 : u
+        v = (v < 0) ? v * 256 : v
+    }
+    
+    if(lsb) {
+        (lsb_mask) ? c1.Dither_merge16_8(c2, mask, luma, y, u, v) : c1.Dither_merge16(c2, mask, y, u, v, luma)
+    } else {
+        (lsb_mask) ? c1.mt_merge(c2, mask, luma, y, u, v) : nop()
+    }
+    
+    return last
 }
