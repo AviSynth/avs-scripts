@@ -275,7 +275,7 @@ function LUResize(clip c, int "width", int "height", float "src_left", float "sr
                \  bool "noring", float "fh", float "fv", int "taps", float "a1", float "a2", float "a3", int "kovrspl",
                \  bool "cnorm", bool "center", string "cplace",	int "y", int "u", int "v", string "kernel_h", string "kernel_v",
                \  float "totalh", float "totalv", bool "invks", bool "invksh", bool "invksv", int "invkstaps", bool "linear", 
-               \  string "curve", int "dither_mode")
+               \  string "curve", float "gcor", int "dither_mode")
 {
     center = Default(center, true)
     need_dither = LUIsDefined("or", fh, fv, kovrspl, cnorm, invks, invksh, invksv, linear) || !center ? true : false
@@ -290,11 +290,13 @@ function LUResize(clip c, int "width", int "height", float "src_left", float "sr
     tv_range = Default(tv_range, true)
     precise = Default(precise, true)
     noring = Default(noring, false)
+    linear = (Defined(curve) && curve == "linear") ? false :  Default(linear, false)
     curve = Default(curve, "709")
-    linear = Default(linear, false)
     y = Default(y, 3)
     u = (c.PixelType == "Y8") ? 1 : Default(u, 3)
     v = Default(v, u)
+    u_lin = (u==3) ? 2 : (u <= 0) ? u : 1
+    v_lin = (v==3) ? 2 : (v <= 0) ? v : 1
     
     sw = c.Width
     sh = lsb_in ? c.Height/2 : c.Height
@@ -372,10 +374,11 @@ function LUResize(clip c, int "width", int "height", float "src_left", float "sr
     {
         rsz = noring ? "Dither_resize16nr" : "Dither_resize16"
         c16 = lsb_in ? c : c.LU8To16(tv_range, y==3, u==3, v==3)
-        c16 = linear ? c16.Dither_y_gamma_to_linear(tv_range, tv_range, curve, y, u, v) : c16
+        c16 = linear ? c16.Dither_y_gamma_to_linear(tv_range, tv_range, curve, u, v, gcor) : c16
         eval(rsz+"""(c16, ow, oh, src_left, src_top, src_width, src_height, kernel, fh, fv, taps, a1, a2, a3,
                       \ kovrspl, cnorm, center, cplace, y, u, v, kernel_h, kernel_v, totalh, totalv,
                       \ invks, invksh, invkstaps)""")
+        linear ? last.Dither_y_linear_to_gamma(tv_range, tv_range, curve, u, v, gcor) : last
         lsb_out ? last : LU16To8(tv_range, y==3, u==3, v==3, dither_mode)
     }
     else 
@@ -401,18 +404,29 @@ function LUResize(clip c, int "width", int "height", float "src_left", float "sr
         {
             Eval("c8." + kernel + "Resize(ow, oh, " + ir_args_kernel +")")
         }
+        
+        lsb_out ? LU8To16(tv_range, y==3, u==3, v==3) : last
     }
 }
 
 
-function LuMerge(clip c1, clip c2, clip mask, int  "y", int "u", int "v", bool "luma", bool "lsb", bool "lsb_mask", bool "scale")
+function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "luma", bool "lsb_in1", bool "lsb_in2", 
+               \ bool "lsb_out", bool "lsb_mask", bool "lsb", bool "scale")
 {
-    # todo: hadle offX, off, w, h; possibly add merging of 16 and 8 bit clip, is this a good idea?
-    lsb = Default(lsb, false)
+    # todo: hadle offX, off, w, h
+    lsb_in1 = Default(lsb_in1, false)
+    lsb_in2 = Default(lsb_in2, false)
+    lsb_out = Default(lsb_out, lsb_in1 || lsb_in2)
     lsb_mask = Default(lsb_mask, false)
-    scale = Default(scale, (y < -256 || u < -256 || v < -256) ? true : false)
+    lsb = lsb_mask ? true : Default(lsb, lsb_out)
+    y = Default(y,3)
+    u = Default(u,3)
+    v = Default(v,u)
+
     
-    if(scale)
+    scale = Default(scale, (y < -255 || u < -255 || v < -255) ? false : true)
+    
+    if(scale && lsb)
     {
         y = (y < 0) ? y * 256 : y
         u = (u < 0) ? u * 256 : u
@@ -420,9 +434,16 @@ function LuMerge(clip c1, clip c2, clip mask, int  "y", int "u", int "v", bool "
     }
     
     if(lsb) {
-        (lsb_mask) ? c1.Dither_merge16_8(c2, mask, luma, y, u, v) : c1.Dither_merge16(c2, mask, y, u, v, luma)
+        c1_16 = (lsb_in1) ? c1 : c1.LU8To16(tv_range, LUIsEq(y,"2||3"), LUIsEq(u,"2||3"), LUIsEq(v,"2||3"))
+        c2_16 = (lsb_in2) ? c2 : c2.LU8To16(tv_range, LUIsEq(y,"4||3"), LUIsEq(u,"4||3"), LUIsEq(4,"4||3"))
+        
+        (lsb_mask) ? c1_16.Dither_merge16_8(c2_16, mask, luma, y, u, v) : c1_16.Dither_merge16(c2_16, mask, y, u, v, luma)
+        (lsb_out) ? last.Lu16To8(tv_range, y!=1, u!=1, v!=1) : last 
     } else {
-        (lsb_mask) ? c1.mt_merge(c2, mask, luma, y, u, v) : nop()
+        c1_8 = (lsb_in1) ? c1.Lu16To8(tv_range, LUIsEq(y,"2||3"), LUIsEq(u,"2||3"), LUIsEq(v,"2||3")) : c1
+        c2_8 = (lsb_in2) ? c2.Lu16To8(tv_range, LUIsEq(y,"4||3"), LUIsEq(u,"4||3"), LUIsEq(v,"4||3")) : c2
+        
+        c1_8.mt_merge(c2_8, mask, luma, y, u, v)
     }
     
     return last
