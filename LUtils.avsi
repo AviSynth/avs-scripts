@@ -119,13 +119,60 @@ function LuMergePlanes(clip c, string "ymode", float "ufac", float "vfac", int "
     }
 }
 
+function LuIsHD(clip c)
+{
+    # todo: make it smarter
+    return (c.Height >= 600) ? true : false
+}
+
 function LuMatchCSP(clip c, clip refc, string "matrix", bool "tv_range")
 {
     tv_range = Default(tv_range, true)
-    matrix = Default(matrix, (c.width >= 600) ? "709" : "601")
+    matrix = Default(matrix, c.LuIsHD ? "709" : "601")
     mstr = (tv_range) ? "Rec"+matrix : "PC."+matrix
     csp = refc.PixelType
     return eval("c.ConvertTo" + csp + """(matrix="""" + mstr + """")""")
+}
+
+function LuConvCSP(clip c, string csp, string "matrix", bool "tv_range", bool "lsb_in", bool "lsb_out", bool "lsb", 
+                 \ string "cplace", string "chromak", float "fh", float "fv", int "taps", float "a1", float "a2", float "a3",
+                 \ int "mode", float "ampo", float "ampn", bool "staticnoise", bool "noring", bool "i420_in")
+{
+    # todo: add rgb48y/rgb48yv12 input support
+    csps_rgb_dither = "RGB48YV12||RGB48Y"
+    csps_rgb = "RGB||RGB24||RGB32||" + csps_rgb_dither
+    csps_yuv = "Y8||YV12||YV16||YV24||YUY2||I420"
+    need_dither = LUIsDefined("or", cplace, chromak, fh, fv, taps, a1, a2, a3, noring, mode, ampo, ampn, staticnoise) || csp.LuIsEq(csps_rgb_dither)
+    Assert(!need_dither || !Defined(lsb) || !lsb, 
+     \ "LUConvCSP: parameter 'lsb' may not be false because one or more of the other parameters supplied" 
+     \+"require processing in 16-bit or Dither resizers.")
+    tv_range = Default(tv_range, true)
+    matrix = Default(matrix, c.LuIsHD ? "709" : "601")
+    i420_in = Default(i420_in, false)
+    lsb_in = Default(lsb_in, false)
+    lsb_out = Default(lsb_out, lsb_in)
+    IsYUVtoRGB = (c.IsYUV && csp.LuIsEq(csps_rgb))
+    IsRGBtoYUV = (c.IsRGB && csp.LuIsEq(csps_yuv))
+    lsb = Default(lsb, IsYUVtoRGB || IsRGBtoYUV || need_dither ? true : false)
+    
+    mstr = (tv_range) ? "Rec"+matrix : "PC."+matrix
+    (i420_in && csp != "I420") ? c.SwapUV : c
+    
+    Assert(csp.LuIsEq(csps_yuv + "||" + csps_rgb),
+         \ "LuConvCSP: Conversion to '" + csp + "' not available.")
+     
+     if (lsb && IsRGBtoYUV) {
+        Dither_convert_yuv_to_rgb(matrix, false, tv_range, cplace, chromak, fh, fv, taps, a1, a2, ae, lsb_in, csp, mode, ampo, ampn, staticnoise, noring)
+     }
+     else if (lsb && IsRGBtoYUV) {
+        Dither_convert_yuv_to_rgb(matrix, False, tv_range, cplace, chromak, fh, fv, taps, a1, a2, a3, lsb_in, csp, mode, amp, ampn, staticnoise, noring)
+     }
+     else if ((csp != c.PixelType)) {
+        eval("ConvertTo" + csp + """(matrix="""" + mstr + """")""")       
+     }
+     (lsb_in && !lsb_out) ? Lu16To8(tv_range, true, !IsY8, !IsY8, mode) : last
+     
+    return last
 }
 
 Function Lu8To16(clip c, bool "tv_range", bool "Y", bool "U", bool "V")
@@ -465,4 +512,36 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
     }
     
     return last
+}
+
+function LuLut(c, string "expr", string "yexpr", string "uexpr", string "vexpr", int "y", int "u", int "v", bool "lsb_in", bool "scale")
+{
+    lsb_in = Default(lsb_in, false)
+    scale = Default(scale, (y < -255 || u < -255 || v < -255) ? false : true)
+    y = Default(y,3)
+    u = Default(u,3)
+    v = Default(v,u)
+    
+    if(scale && lsb_in)
+    {
+        y = (y < 0) ? y * 256 : y
+        u = (u < 0) ? u * 256 : u
+        v = (v < 0) ? v * 256 : v
+    
+        expr_list = Defined(expr) ? "expr," : "" + Defined(yexpr) ? "yexpr," : "" 
+                \ + Defined(uexpr) ? "uexpr," : "" + Defined(vexpr) ? "vexpr" : ""            
+        eblock = """<EXPR> = <EXPR> + " 256 *" """
+        
+        for(i=0, LuSubstrCnt(expr_list)-1)
+        {
+            current_expr = LuSubstrAtIdx(expr_list, i)
+            eval(LuReplaceStr(eblock, "<EXPR>", LuSubstrAtIdx(expr_list, i)))
+        }
+    }
+    
+    (lsb_in) ? c.Dither_lut16(expr, yexpr, uexpr, vexpr, y, u, v) 
+           \ : c.mt_lut(expr, yexpr, uexpr, vexpr, y, u, v) 
+           
+    return last
+    
 }
