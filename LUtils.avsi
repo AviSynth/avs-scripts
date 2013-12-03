@@ -199,6 +199,7 @@ function LuIsEq(val s, string t, bool "idx")
     if (s.Defined)
     {
         s = !s.IsString ? String(s) : s
+        t = (RightStr(t, 2) == "||") ? t : t+"||"
         result = false
         i = -1
         while(!result && FindStr(t,"||") != 0)
@@ -208,7 +209,7 @@ function LuIsEq(val s, string t, bool "idx")
             t = MidStr(t,pos+2)
             i = i+1
         }
-        return idx ? i : result
+        return idx ? (result ? i : -1) : result
     }
     else { return idx ? -2 : false }
 }
@@ -422,9 +423,26 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
     y = Default(y,3)
     u = Default(u,3)
     v = Default(v,u)
+    scale = Default(scale, (y < -255 || u < -255 || v < -255) ? false : true)
+    # use luma plane of a Y8 mask clip for chroma channels by default if the chroma planes are going to be processed
+    luma = Default(luma, (u!=3 && v!=3) ? false : (mask.IsY8) ? true : false)
+    Assert(!(mask.IsY8 && !luma && (u==3 || v==3)), "LuMerge: mask is clip is missing the chroma plane(s) required "
+                                                 \ +"to process the chroma plane(s) of the input clips." )
 
     
-    scale = Default(scale, (y < -255 || u < -255 || v < -255) ? false : true)
+    if((c1.IsY8 && !c2.IsY8) || (!c1.IsY8 && c2.IsY8))
+    {
+        if(c1.IsY8 && !LuIsEq(u,"3|2") && !LuIsEq(v,"3|2"))
+        { c1 = c1.LuMatchCSP(c2) }
+        else if (c2.IsY8 && !LuIsEq(u,"3|4") && !LuIsEq(v,"3|4"))
+        { c2 = c2.LuMatchCSP(c1) }
+        else
+        { 
+            Assert(false, "LuMerge: can't merge Y8 clip with YV12/YV16/YV24 clip if chroma planes are to be processed " 
+                       \ +"or copied from the Y8 clip.")
+        }
+        
+    }
     
     if(scale && lsb)
     {
