@@ -1,0 +1,523 @@
+/*
+eedi3_resize16 v0.1
+====================
+
+shamelessly stolen from mawen1250s nnedi3_resize16 v3.0
+
+Requirements:
+
+   * AviSynth+ 
+   * Dither v1.24.0
+   * eedi3 v0.9.2 (Firesledge mod)
+   * Contra-Sharpen mod v3.4
+   * SmoothAdjust v2.90
+   * Masktools 2.0a48
+
+Input Formats: Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
+    
+    
+Parameters:
+
+   + [int] target_width, target_height (source width/height)
+       *   Resolution to resize to. Arbitrary resolutions are realized with Dither resizers. 
+   + [float] src_left (0), src_top (0), src_width(source width), src_height (source height)
+       *   Parameters for cropping before resizing
+   + [string] kernel_d (Spline36)
+       *   Resizing kernel used for flat area downscaling & edge area rescaling 
+   
+   TODO: move parameter documentation to the top
+       
+*/
+
+
+
+
+Function eedi3_resize16(clip input, int "target_width", int "target_height", float "src_left", float "src_top",
+\                        float "src_width", float "src_height", string "kernel_d", string "kernel_u", bool "noring",
+\                        float "alpha", float "beta", float "gamma", int "nrad", int "mdis", bool "hp", int "threads", float "ratiothr",
+\                        float "sharp", bool "mixed", float "thr", float "elast",
+\                        string "output", string "curve", float "gcor", string "matrix", bool "tv_range", string "cplace",
+\                        int "Y", int "U", int "V", bool "lsb_in", bool "lsb", int "dither", clip "mclip")
+{
+    # Parameters for merging edge&flat upscaled clip
+    mixed    = Default(mixed,    True   )   # whether to use 16bit resizer in flat area when upscaling, which achieves better quality at the cost of speed.
+    thr      = Default(thr,      1.0    )   # the same with "thr"   in Dither_limit_dif16, valid value range is [0, 10.0], set to 0 will disable the limiting process.
+    elast    = Default(elast,    1.0    )   # the same with "elast" in Dither_limit_dif16, valid value range is [1, 10.0].
+                                            # PDiff: pixel value diff between flat   clip and edge clip
+                                            # ODiff: pixel value diff between merged clip and edge clip
+                                            # ODiff = PDiff when (PDiff <= thr)
+                                            # ODiff gradually decreases from thr to 0 when (thr <= PDiff <= thr * elast)
+                                            # ODiff = 0     when (PDiff >= thr * elast)
+                                            #
+                                            # Larger "thr"   will result in more pixels been taken from flat area upscaled clip(Dither_resize16)
+                                            # Larger "thr"   will result in less pixels been taken from edge area upscaled clip(eedi3+Dither_resize16)
+                                            # Larger "elast" will result in more pixels been blended from edge&flat area upscaled clip
+    
+    
+    # Parameters for eedi3
+    mclip    = Default(mclip, Undefined())
+    alpha    = Default(alpha,      0.4   )
+    beta     = Default(beta,       0.2   )
+    gamma    = Default(gamma,      15.0  )
+    nrad     = Default(nrad,       3     )
+    mdis     = Default(mdis,      35     )
+    hp       = Default(hp,        false  )
+    threads  = Default(threads,    0     )
+    
+    
+    # Parameters for Dither_resize16
+    kernel_d = Default(kernel_d, "Spline36" )   
+    kernel_u = Default(kernel_u, "Spline64" )   # kernel of Dither_resize16 used in flat area upscaling
+    noring   = Default(noring,   False      )   # True use non-ringing algorithm of Dither_resize16 in flat area scaling
+                                                # *It actually doesn't make sense for eedi3_resize16(which uses eedi3 for upscaling), *
+                                                # *while it'll produce blurring and aliasing when downscaling.                          *
+                                                # *You'd better not set it to True unless you know what you are doing.                  *
+    
+    
+    # Post-Process
+    sharp    = Default(sharp,    0      )   # Strength of Contra-Sharpen mod, for sharper edge. 0 means no sharpening, common value is about 100.
+                                            # *Only* when {horrizontal or vertical}{scale ratio}>{ratiothr} will sharpening take effect.
+    
+    
+    # Parameters for input/output
+    Y        = Default(Y,        3      )
+    U        = Default(U,        3      )
+    V        = Default(V,        3      )
+    lsb_in   = Default(lsb_in,   False  )   # input  clip is 16-bit stacked or not
+    lsb      = Default(lsb,      False  )   # output clip is 16-bit stacked or not
+    dither   = Default(dither,   6      )   # dither mode for conversion from 16-bit to 8-bit (same as "mode" in DitherPost)
+    
+    sCSP     = input.eedi3_resize16_GetCSP()
+    Assert(sCSP=="Y8" || sCSP=="YV12" || sCSP=="YV16" || sCSP=="YV24", """eedi3_resize16: only accept Y8, YV12, YV16, YV24 input""")
+    
+    output   = Default(output,   sCSP   )
+    # Output format. Possible values are:
+    # "Y8"       : Regular Y8    colorspace. Parameter "lsb" works on this output mode.
+    # "YV12"     : Regular YV12  colorspace. Parameter "lsb" works on this output mode.
+    # "YV16"     : Regular YV16  colorspace. Parameter "lsb" works on this output mode.
+    # "YV24"     : Regular YV24  colorspace. Parameter "lsb" works on this output mode.
+    # "RGB32"    : Regular RGB32 colorspace.
+    # "RGB24"    : Regular RGB24 colorspace.
+    # "RGB48YV12": 48-bit RGB conveyed on YV12. Use it for rawvideo export only. Not suitable for display or further processing (it will look like garbage).
+    # "RGB48Y"   : 48-bit RGB. The components R, G and B are conveyed on three YV12 or Y8 (if supported) stack16 clips interleaved on a frame basis.
+    
+    ProcY8     = sCSP == "Y8" || output == "Y8"
+    sCSP     = ProcY8 ? "YV24" : sCSP
+    
+    IsRGB    = LeftStr(output, 3) == "RGB"
+    oCSP     = IsRGB || ProcY8 ? "YV24" : output
+    
+    Y        = min(Y, 4)
+    U        = ProcY8 ? 1 : min(U, 4)
+    V        = ProcY8 ? 1 : min(V, 4)
+    Yt       = Y == 3 || Y == 4
+    Ut       = U == 3 || U == 4
+    Vt       = V == 3 || V == 4
+    Y31      = Yt ? 3 : 1
+    U31      = Ut ? 3 : 1
+    V31      = Vt ? 3 : 1
+    Y32      = Yt ? 3 : Y
+    U32      = Ut ? 3 : U
+    V32      = Vt ? 3 : V
+    Y21      = Yt ? 2 : Y
+    U21      = Ut ? 2 : U
+    V21      = Vt ? 2 : V
+    Y321     = Y > 1 ? 3 : Y
+    U321     = U > 1 ? 3 : U
+    V321     = V > 1 ? 3 : V
+    
+    sw       = input.Width ()
+    sh       = input.Height()
+    sh       = lsb_in ? sh/2 : sh
+    swc      = sCSP=="YV24" ? sw   : sw/2
+    shc      = sCSP=="YV12" ? sh/2 : sh
+    HD       = (sw > 1024 || sh > 576) ? True : False
+    
+    matrix   = Default(matrix,   HD ? "709" : "601")
+    # The matrix used to convert the YUV pixels to computer RGB. Possible values are:
+    # "601"  : ITU-R BT.601 / ITU-R BT.470-2 / SMPTE 170M. For Standard Definition content.
+    # "709"  : ITU-R BT.709. For High Definition content.
+    # "240"  : SMPTE 240M
+    # "FCC"  : FCC
+    # "YCgCo": YCgCo
+    # When the parameter is not defined, ITU-R BT.601 and ITU-R BT.709 are automatically selected depending on the clip definition.
+    
+    curve    = Default(curve,    "linear"   )
+    # type of gamma mapping(transfer characteristic)
+    # possible values:
+    # "709"    - ITU-R BT.709 transfer curve for digital video
+    # "601"    - ITU-R BT.601 transfer curve, same as "709"
+    # "170"    - SMPTE 170M, same as "709"
+    # "240"    - SMPTE 240M (1987)
+    # "srgb"   - sRGB curve
+    # "2020"   - ITU-R BT.2020 transfer curve, for 12-bit content. For sources of lower bitdepth, use the "709" curve.
+    # "linear" - linear curve without gamma-aware processing
+    curve    = Yt ? curve : "linear"
+    gcor     = Default(gcor,     1.0    )   # Gamma correction, applied on the linear part.
+    
+    tv_range = Default(tv_range, True   )   # define source's level
+    
+    cplace   = Default(cplace,   "MPEG2")
+    # Placement of the chroma subsamples. Can be one of these strings:
+    # "MPEG1": 4:2:0 subsampling used in MPEG-1. Chroma samples are located on the center of each group of 4 pixels.
+    # "MPEG2": Subsampling used in MPEG-2 4:2:x. Chroma samples are located on the left pixel column of the group.
+    
+    
+    # Parameters for resizer
+    ow       = Default(target_width,  sw)
+    oh       = Default(target_height, sh)
+    owc      = oCSP=="YV24" ? ow   : ow/2
+    ohc      = oCSP=="YV12" ? oh/2 : oh
+    Assert(!(output=="YV16" && ow!=owc*2), "eedi3_resize16: width of YV16 output clip must be MOD2! Is: "+ String(ow))
+    Assert(!(output=="YV12" && ow!=owc*2), "eedi3_resize16: width of YV12 output clip must be MOD2! Is: "+ String(ow))
+    Assert(!(output=="YV12" && oh!=ohc*2), "eedi3_resize16: height of YV12 output clip must be MOD2! Is: "+ String(oh))
+    
+    src_left    = Default(src_left,   0 )
+    src_top     = Default(src_top,    0 )
+    src_width   = Default(src_width,  sw)
+    src_height  = Default(src_height, sh)
+    
+    
+    # Pre-cropping/padding
+    prel        = int(src_left/2) * 2
+    pret        = int(src_top /2) * 2
+    prer        = int((src_width > 0 ? -sw+src_left+src_width : src_width )/2) * 2
+    preb        = int((src_height> 0 ? -sh+src_top+src_height : src_height)/2) * 2
+    prew        = sw - prel + prer
+    preh        = sh - pret + preb
+    
+    if (sCSP == "YV24")
+    {
+        swmod2      = sw  /2*2 == sw
+        pwmod2      = prew/2*2 == prew
+        wpre        = prew < sw
+        prel        = wpre ?          prel            :          0
+        prer        = wpre ? pwmod2 ? prer : prer + 1 : swmod2 ? 0 : 1
+        prew        = sw - prel + prer
+        wpre        = prew < sw || !swmod2
+    } else {
+        swmod4      = sw  /4*4 == sw
+        pwmod4      = prew/4*4 == prew
+        wpre        = prew < sw
+        prel        = wpre ?          prel            :          0
+        prer        = wpre ? pwmod4 ? prer : prer + 2 : swmod4 ? 0 : 2
+        prew        = sw - prel + prer
+        wpre        = prew < sw || !swmod4
+    }
+    
+    if (sCSP == "YV12") {
+        shmod4      = sh  /4*4 == sh
+        phmod4      = preh/4*4 == preh
+        hpre        = preh < sh
+        pret        = hpre ?          pret            :          0
+        preb        = hpre ? phmod4 ? preb : preb + 2 : shmod4 ? 0 : 2
+        preh        = sh - pret + preb
+        hpre        = preh < sh || !shmod4
+    } else {
+        shmod2      = sh  /2*2 == sh
+        phmod2      = preh/2*2 == preh
+        hpre        = preh < sh
+        pret        = hpre ?          pret            :          0
+        preb        = hpre ? phmod2 ? preb : preb + 1 : shmod2 ? 0 : 1
+        preh        = sh - pret + preb
+        hpre        = preh < sh || !shmod2
+    }
+    
+    src_width   = src_width <=0 ? +sw-src_left+src_width : src_width
+    src_height  = src_height<=0 ? +sh-src_top+src_height : src_height
+    src_left    = wpre ? src_left-prel : src_left
+    src_top     = hpre ? src_top -pret : src_top
+    
+    src_leftc   = sCSP=="YV24" ? src_left      : src_left  /2.
+    src_topc    = sCSP=="YV12" ? src_top   /2. : src_top
+    src_widthc  = sCSP=="YV24" ? src_width     : src_width /2.
+    src_heightc = sCSP=="YV12" ? src_height/2. : src_height
+    
+    
+    # Scale & Shift Calculation
+    ratiothr = Default(ratiothr,   1.125)    # When scale ratio is larger than ratiothr, use eedi3+Dither_resize16 upscale method instead of pure Dither_resize16.
+    
+    yhratio  = float(ow ) / float(src_width  )
+    yvratio  = float(oh ) / float(src_height )
+    chratio  = float(owc) / float(src_widthc )
+    cvratio  = float(ohc) / float(src_heightc)
+    
+    enable   = yhratio!=1 || yvratio!=1 || chratio!=1 || cvratio!=1 ||
+    \          src_width  !=int(src_width  ) || src_height !=int(src_height ) || src_widthc !=int(src_widthc ) || src_heightc!=int(src_heightc) ||
+    \          src_left   !=int(src_left   ) || src_top    !=int(src_top    ) || src_leftc  !=int(src_leftc  ) || src_topc   !=int(src_topc   )
+    
+    yhct     = yhratio>ratiothr ? Ceil( log(yhratio/ratiothr) / log(2) ) : 0
+    yhrf     = int(Pow(2, yhct))
+    yrhratio = yhratio/yhrf
+    yvct     = yvratio>ratiothr ? Ceil( log(yvratio/ratiothr) / log(2) ) : 0
+    yvrf     = int(Pow(2, yvct))
+    yrvratio = yvratio/yvrf
+    
+    yhshift  = yhrf>=2 ? 0.5 : 0
+    yvshift  = yvrf>=2 ? 0.5 : 0
+    yhfix    = -yhshift
+    yvfix    = -yvshift
+    
+    chct     = chratio>ratiothr ? Ceil( log(chratio/ratiothr) / log(2) ) : 0
+    chrf     = int(Pow(2, chct))
+    crhratio = chratio/chrf
+    cvct     = cvratio>ratiothr ? Ceil( log(cvratio/ratiothr) / log(2) ) : 0
+    cvrf     = int(Pow(2, cvct))
+    crvratio = cvratio/cvrf
+    
+    nonenny  = yhct<=0 && yvct<=0
+    nonennc  = chct<=0 && cvct<=0
+    nonenn   = nonenny || nonennc
+    
+    Ynnt     = Yt&&!nonenny
+    Unnt     = Ut&&!nonennc
+    Vnnt     = Vt&&!nonennc
+    Ynn31    = Ynnt ? 3 : 1
+    Unn31    = Unnt ? 3 : 1
+    Vnn31    = Vnnt ? 3 : 1
+    Ynn      = Yt&&nonenny ? 2 : Y
+    Unn      = Ut&&nonennc ? 2 : U
+    Vnn      = Vt&&nonennc ? 2 : V
+    
+    nnt      = Ynnt || Unnt || Vnnt
+    mixed    = !nnt || !enable ? False : mixed
+    
+    
+    # calculate chroma placement and center shift
+    if (cplace == "MPEG1") 
+    { 
+        chshift = (chrf >= 2) ? 0.50 : 0
+        cphfixe = 0
+        cphfix  = 0    
+    }
+    else if (cplace == "MPEG2")
+    {
+        if (oCSP == sCSP == "YV24") 
+        { 
+            chshift = (chrf >= 2) ? 0.50 : 0
+            cphfixe = 0
+            cphfix  = 0
+        }
+        else if (oCSP == "YV24") 
+        { 
+            chshift = (chrf >= 2) ? 0.50-chrf/4. : -0.25
+            cphfixe = 0
+            cphfix  = 0.25
+        }
+        else if (sCSP == "YV24")
+        { 
+            chshift = (chrf >= 2) ? 0.75 :  0.25
+            cphfixe = 0.25-0.25/crhratio
+            cphfix  = -0.5
+        }
+        else
+        { 
+            chshift = (chrf >= 2) ? 0.75-chrf/4. :  0
+            cphfixe = 0.25-0.25/crhratio
+            cphfix  = 0.25-0.25/chratio
+        }
+    }
+    else { Assert(false, "eedi3_resize16: Chroma placement '" + cplace + "' not supported.") }
+    
+    cvshift  = (cvrf >=2) ? 0.5 : 0
+    chfix    = -chshift
+    cvfix    = -cvshift
+
+    
+    # Pre-process
+    
+    input = (wpre || hpre) ? input.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
+                                         \ kernel="point", lsb_in=lsb_in, lsb_out=lsb_in)
+                         \ : input
+    
+    if (lsb_in) {
+        input8 = input.Lu16To8(tv_range, Yt, Ut, Vt, -1)
+        input16 = input
+    }
+    else {
+        input8 = input
+        input16 = input.Lu8To16(tv_range, True, True, True)
+    }
+    
+    
+    # eedi3 upscale for edge area
+    if (enable && nnt)
+    {
+        # special case: YV12 input and identical scaling factors for chroma and luma -> eedi3 all planes together
+        if(yhct==chct && yvct==cvct && sCSP=="YV12")
+        {
+            mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? YtoUV(mclip, mclip, mclip).ConvertToYV12() : mclip.ConvertToYV12()
+            edgenn  = input8.eedi3_resize16_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, Ut, Vt, alpha, beta, gamma, nrad, mdis, hp, threads)
+            edgennY = sharp>0 ? edgenn.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1)
+            \                         .Lu8To16(tv_range, Yt, Ut, Vt)
+            \                 : edgenn.Lu8To16(tv_range, Yt, Ut, Vt)
+            edgennU = edgennY.UToY8()
+            edgennV = edgennY.VToY8()
+            edgennY = edgennY.ConvertToY8()
+        } else {
+            if(Ynnt) {
+                mclip_p = Defined(mclip) ? mclip.ConvertToYV12() : Undefined()
+                edgennY = input8.ConvertToYV12().eedi3_resize16_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, False, False, alpha, beta, gamma, nrad, mdis, hp, threads)
+                edgennY = (sharp >0) ? edgennY.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1) : edgennY
+                edgennY = edgennY.ConvertToY8().Lu8To16(tv_range, Yt, False, False)
+            }
+            if (Unnt) {
+                mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? mclip_p : mclip.UtoY()
+                edgennU = input8.UToY().eedi3_resize16_rpow2(mclip_p, cvct, chct, 1, 1, Ut, False, False, alpha, beta, gamma, nrad, mdis, hp, threads)
+                       \ .ConvertToY8().Lu8To16(tv_range, Ut, False, False)
+            }
+            if (Vnnt) {
+                mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? mclip_p : mclip.VtoY()
+                edgennV = input8.VToY().eedi3_resize16_rpow2(mclip_p, cvct, chct, 1, 1, Vt, False, False, alpha, beta, gamma, nrad, mdis, hp, threads)
+                       \        .ConvertToY8().Lu8To16(tv_range, Vt, False, False)
+            }
+        }
+    }
+    
+    
+    # edge area resize & fix center shift
+    if(enable && nnt)
+    {
+        edgeY = (Ynnt) ? edgennY.LuResize(ow , oh , src_left *yhrf+yhfix, src_top *yvrf+yvfix, src_width *yhrf, tv_range=tv_range,
+                                        \ src_height *yvrf, true, kernel=kernel_d, y=Y31, u=1, v=1, curve=curve, gcor=gcor)
+                     \ : input16.BlankClip(width=ow , height=oh *2, pixel_type="Y8", color_yuv=$008080)
+           
+    	edgeU   = (Unnt) ? edgennU.LuResize(owc, ohc, src_leftc*chrf+chfix+cphfixe, src_topc*cvrf+cvfix, tv_range=tv_range,
+                                          \ src_widthc*chrf, src_heightc*cvrf, true, kernel=kernel_d, y=U31, u=1, v=1)
+                       \ : input16.BlankClip(width=owc, height=ohc*2, pixel_type="Y8", color_yuv=$008080)
+                       
+    	edgeV   = (Vnnt) ? edgennV.LuResize(owc, ohc, src_leftc*chrf+chfix+cphfixe, src_topc*cvrf+cvfix, tv_range=tv_range,
+                                          \ src_widthc*chrf, src_heightc*cvrf, true, kernel=kernel_d, y=V31, u=1, v=1)
+                       \ : input16.BlankClip(width=owc, height=ohc*2, pixel_type="Y8", color_yuv=$008080)
+    	
+    	edge16  = ProcY8 ? edgeY : YToUV(edgeU, edgeV, edgeY)
+    }
+    
+    
+    # flat area resize
+    if(enable && (mixed || !(Ynnt && Unnt && Vnnt)))
+    {
+        kernel_y = (yhratio>1||yvratio>1) ? kernel_u : kernel_d
+        kernel_c = (chratio>1||cvratio>1) ? kernel_u : kernel_d
+        if((yhratio==chratio) && (yvratio==cvratio) && (!mixed || (Ynnt && Unnt && Vnnt)))
+        {
+            flat16 = input16.LuResize(ow, oh, src_left, src_top, src_width, src_height, true, cplace=cplace, noring=noring, 
+                                    \ tv_range=tv_range, kernel=kernel_y, y=Y32, u=U32, v=V32, curve=curve, gcor=gcor)
+        }
+        else
+        {
+            flatY = (mixed || !Ynnt) && Yt ? input16.ConvertToY8().LuResize(ow, oh, src_left, src_top, src_width, src_height, true, noring=noring,
+                                                                         \  tv_range=tv_range, kernel=kernel_y, y=Y32, u=1, v=1, curve=curve, gcor=gcor)
+                                         \ : input16.BlankClip(width=ow, height=oh*2, pixel_type="Y8", color_yuv=$008080)
+            
+            flatU = (mixed || !Unnt) && Ut ? input16.UToY8().LuResize(owc, ohc, src_leftc+cphfix, src_topc, src_widthc, src_heightc, true, noring=noring,
+                                                                    \ tv_range=tv_range, kernel=kernel_c, y=U32, u=1)
+                                         \ : input16.BlankClip(width=owc, height=ohc*2, pixel_type="Y8", color_yuv=$008080)
+                                                                          
+            flatV = (mixed || !Vnnt) && Vt ? input16.VToY8().LuResize(owc, ohc, src_leftc+cphfix, src_topc, src_widthc, src_heightc, true, noring=noring,
+                                                                    \ tv_range=tv_range, kernel=kernel_c, y=U32, u=1)
+                                         \ : input16.BlankClip(width=owc, height=ohc*2, pixel_type="Y8", color_yuv=$008080)
+            
+            flat16  = ProcY8 ? flatY : YToUV(flatU, flatV, flatY)
+        }
+    }
+    
+    # merge & output
+    if(enable)
+    {
+        if (!nnt) { 
+            final = flat16
+        }
+        else if (mixed) { 
+            final = Dither_limit_dif16(flat16, edge16, thr=thr, elast=elast, y=Ynn, u=Unn, v=Vnn) 
+        }
+        else if ((Ynnt==Unnt && Unnt==Vnnt) || ProcY8) { 
+            final = edge16
+        }
+        else { 
+            final = mt_logic(edge16, flat16, "and", Y=Yt?Ynnt?2:4:1, U=Ut?Unnt?2:4:1, V=Vt?Vnnt?2:4:1)
+        }
+        
+    } else { # shift only
+        final  = input16.Dither_resize16(ow, oh, src_left, src_top, src_width, src_height, kernel="point", y=Y, u=U, v=V)
+    }
+    
+    final = (ProcY8 && output != "Y8") ? final.LuLut(y=2, u=-128, v=-128, lsb_in=true, scale=true) : final 
+    return final.LuConvCsp(output, matrix, tv_range, true, lsb, mode=dither)
+}
+
+
+Function eedi3_resize16_rpow2(clip input, clip "mclip", int "vct", int "hct", int "vfield", int "hfield", bool "Y", bool "U", bool "V", 
+\                              float "alpha", float "beta", float "gamma", int "nrad", int "mdis", bool "hp", int "threads", bool "honly")
+{
+    vct      = Default(vct,      1      )
+    hct      = Default(hct,      1      )
+    vfield   = Default(vfield,   1      )
+    hfield   = Default(hfield,   1      )
+    Y        = Default(Y,        True   )
+    U        = Default(U,        False  )
+    V        = Default(V,        False  )
+    honly    = Default(honly,    False  )
+    mclip    = Default(mclip,    Undefined())
+    
+    
+    input
+    
+    if(hct >= 1)
+    {
+        if (honly) {
+            mclip = IsClip(mclip) ? mclip.Spline16Resize(last.Width, last.Height) : Undefined()
+        } else {
+            TurnRight()
+            mclip = IsClip(mclip) ? mclip.TurnRight() : Undefined()
+        }
+
+        eedi3(hfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads)
+        
+    	hct    = hct - 1
+        honly  = hct >= 1
+        hfield = 0
+        
+        if (!honly) {
+            TurnLeft()
+            mclip = IsClip(mclip) ? mclip.TurnLeft() : Undefined()
+        }
+    }
+    
+    if(vct >= 1 && !honly)
+    {
+        mclip = IsClip(mclip) ? mclip.Spline16Resize(last.Width, last.Height) : Undefined()
+        eedi3(vfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads)
+        
+    	vct    = vct - 1
+        vfield = 0
+    }
+    
+    
+    return Y||U||V ? vct <= 0 && hct <= 0 ? last
+    \                                     : last.eedi3_resize16_rpow2(mclip, vct, hct, vfield, hfield, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, threads, honly)
+    \              : input
+}
+
+
+Function eedi3_resize16_GetCSP(clip c)
+{
+    return c.IsPlanar ? c.IsYV12 ? "YV12" :
+    \                   c.IsYV16 ? "YV16" :
+    \                   c.IsYV24 ? "YV24" : c.GetCSP_Y8_YV411 :
+    \      c.IsYUY2   ? "YUY2"   :
+    \      c.IsRGB32  ? "RGB32"  :
+    \      c.IsRGB24  ? "RGB24"  : "Unknown"
+    
+    
+    Function GetCSP_Y8_YV411(clip c) {
+        try {
+            c.UtoY
+            csp = "YV411"
+        } catch ( error_msg ) {
+        csp = "Y8"
+        }
+        return csp
+    }
+}
+
