@@ -1,4 +1,4 @@
-# Lazy Utilities v0.0.1
+# Lazy Utilities v0.1
 # too lazy to write a readme
 
 function LuStackedNto16(clip c, int n)
@@ -207,7 +207,7 @@ Function Lu16To8(clip c, bool "tv_range", bool "Y", bool "U", bool "V", int "dit
     # again shamelessly copy-pasted from nnedi3_resize16 by mawen1250
     
     dither = Default(dither, 6)
-    Assert(-1 < dither < 8 , "Lu16To8: parameter 'dither' must be between -1 and 8.")
+    Assert(-1 <= dither <= 8 , "Lu16To8: parameter 'dither' must be between -1 and 8.")
     
     tv_range = Default(tv_range, True   ) # define if input clip is of tv range(limited range)
     interp   = Default( interp,     0   ) # use interp or not for Curve/SmoothCurve16
@@ -459,7 +459,7 @@ function LUResize(clip c, int "width", int "height", float "src_left", float "sr
 
 
 function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "luma", bool "lsb_in1", bool "lsb_in2", 
-               \ bool "lsb_out", bool "lsb_mask", bool "lsb", bool "scale")
+               \ bool "lsb_out", bool "lsb_mask", bool "lsb", bool "scale", bool "tv_range")
 {
     # todo: hadle offX, off, w, h
     lsb_in1 = Default(lsb_in1, false)
@@ -467,6 +467,7 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
     lsb_out = Default(lsb_out, lsb_in1 || lsb_in2)
     lsb_mask = Default(lsb_mask, false)
     lsb = lsb_mask ? true : Default(lsb, lsb_out)
+    tv_range = Default(tv_range, true)
     y = Default(y,3)
     u = Default(u,3)
     v = Default(v,u)
@@ -502,8 +503,8 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
         c1_16 = (lsb_in1) ? c1 : c1.LU8To16(tv_range, LUIsEq(y,"2||3"), LUIsEq(u,"2||3"), LUIsEq(v,"2||3"))
         c2_16 = (lsb_in2) ? c2 : c2.LU8To16(tv_range, LUIsEq(y,"4||3"), LUIsEq(u,"4||3"), LUIsEq(4,"4||3"))
         
-        (lsb_mask) ? c1_16.Dither_merge16_8(c2_16, mask, luma, y, u, v) : c1_16.Dither_merge16(c2_16, mask, y, u, v, luma)
-        (lsb_out) ? last.Lu16To8(tv_range, y!=1, u!=1, v!=1) : last 
+        (lsb_mask) ? c1_16.Dither_merge16(c2_16, mask, y, u, v, luma) : c1_16.Dither_merge16_8(c2_16, mask, luma, y, u, v)
+        (lsb_out) ? last : last.Lu16To8(tv_range, y!=1, u!=1, v!=1)
     } else {
         c1_8 = (lsb_in1) ? c1.Lu16To8(tv_range, LUIsEq(y,"2||3"), LUIsEq(u,"2||3"), LUIsEq(v,"2||3")) : c1
         c2_8 = (lsb_in2) ? c2.Lu16To8(tv_range, LUIsEq(y,"4||3"), LUIsEq(u,"4||3"), LUIsEq(v,"4||3")) : c2
