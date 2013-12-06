@@ -546,3 +546,22 @@ function LuLut(c, string "expr", string "yexpr", string "uexpr", string "vexpr",
     return last
     
 }
+
+function LuLimitDif(clip  flt, clip src, clip  "ref", float "thr", float "elast", int "y", int "u", int "v",
+                  \ bool "lsb_in1", bool "lsb_in2", bool "lsb_out", bool "tv_range")
+{
+    lsb_in1 = Default(lsb_in1, false)
+    lsb_in2 = Default(lsb_in2, lsb_in1)
+    lsb_out = Default(lsb_out, lsb_in1||lsb_in2)
+    y = Default(y, 3)
+    u = Default(u, 3)
+    v = Default(v, u)
+    
+    flt = (lsb_in1) ? flt : flt.Lu8To16(tv_range, LuIsEq(y,"2||3"), LuIsEq(u,"2||3"), LuIsEq(v,"2||3"))
+    src = (lsb_in2) ? src : src.Lu8To16(tv_range, LuIsEq(y,"4||3"), LuIsEq(u,"4||3"), LuIsEq(v,"4||3"))
+    
+    flt.Dither_limit_dif16(src, ref, thr, elast, y, u, v)
+   
+    return (lsb_out) ? last : last.Lu16To8(tv_range, y!=1, u!=1, v!=1)
+
+}
