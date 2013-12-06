@@ -7,7 +7,6 @@ Focus is on quality rather than speed, defaults to eedi3 based aa for now.
 
 ** WIP - everything subject to change without notice **
 still missing: 
-   * true 8-bit path for speed (tbd in eedi3_resize16)
    * sharpeners (LSFmod, awarpsharp2?)
    * some mask presets
    * pre-aa downscaling
@@ -25,7 +24,7 @@ Requirements:
    * SmoothAdjust v2.90
    * Masktools v2.0a48tp7fix5
    * LUtils v0.1
-   * Resize 8 v1.1
+   * Resize8 v1.1
    * RgTools v0.91
    * tmaskcleaner v0.9
    * Sangnom2 v0.35
@@ -232,9 +231,9 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
     if(LuIsEq(aa, "eedi3||eedi3+sangnom2"))
     {
         mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
-        eedi3_resize16(last, ee_ssw, ee_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
+        eedi3_resize(last, ee_ssw, ee_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
         \              ee_threads, 1.0, sharp, false, Undefined, Undefined, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
-        \               y_aa, u_aa, v_aa, lsb_in, lsb, Undefined, mclip_ss)
+        \               y_aa, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
     }
     
     # SangNom2 aa
