@@ -7,7 +7,6 @@ Focus is on quality rather than speed, defaults to eedi3 based aa for now.
 
 ** WIP - everything subject to change without notice **
 still missing: 
-   * sharpeners (LSFmod, awarpsharp2?)
    * some mask presets
    * pre-aa downscaling
    * aarepair?
@@ -28,6 +27,9 @@ Requirements:
    * RgTools v0.91
    * tmaskcleaner v0.9
    * Sangnom2 v0.35
+   * Soothe
+   * aWarpSharp2
+   * LSFmod 1.9 (and prerequisites)
 
 Input Formats: 
     * Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
@@ -45,9 +47,6 @@ Parameters:
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
    + [bool] lsb_in (false), lsb_out (lsb_in)
        *   Tells the script whether the input clips are 16-bit stacked or 8 bit
-   + [bool] lsb
-       *   Enables/Disables 16-bit processing. Enabled by default if either lsb_in or lsb_out is true. 
-       *   Also enabled for RGB processing or when using supersampling kernels only available in Dither.
    + [int] y (3), u (2), v (u)
        *   Processing options for y/u/v planes:
            *  -x..0 : All the pixels of the plane will be set to -x (disables processing)
@@ -65,10 +64,19 @@ Parameters:
        *   Using anything other than multiples of two will incur an additional performance hit
    + [various] ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp
        *   Eedi3 parameters (refer to eedi3 docs for more information)
-   + [float] sharp (0)
-       *   Contra sharpening to be applied to the antialiased clip. Common values are around 100
-       *   This parameter is subject to change as other sharpening methods are being added
-       *   Sharpening is applied on the supersampled clip after antialiasing.
+   + [bool/string] sharp (false)
+       *   Sharpening applied to the supersampled clip after antialiasing
+       *   Can be True/False or one of the following methods:
+           *    "csmod" : contra sharpening (Default if set to true)
+           *    "lsfmod" : LSFmod with configurable defaults and strength
+           *    "awarpsharp2" : aWarpSharp2 applied at supersampling resolution (ssf*ee_fac)
+           *    "awarp4" : aWarpSharp2 applied at 4x source resolution 
+   + [int] cs_strength (75)
+       *   Contra sharpening strength
+   + [int] aw_thresh, aw_blur, aw_depth (4 for awarpsharp2; 2 for awarp4)
+       *   Parameters passed to aWarpSharp2 (refer to awarpsharp2 docs for more information)
+   + [various] lsf_strength (60), lsf_defaults (fast)
+       *   Parameters passed to LSFmod (refer to LSFmod docs for more information)
    + [string] kernel_d (Spline36)
        *   Kernel to use for downscaling back to the source resolution
    + [bool] noring (false)
@@ -80,7 +88,7 @@ Parameters:
        *   Specifies the range of the pixel values of the input and output clips
    + [string] cplace (MPEG2)
        *   Chroma siting of the clip to be processed (refer to the Dither docs for more information)
-   + [bool/int] mask (simple if no mclip is specified, otherwise false)
+   + [bool/string] mask (simple if no mclip is specified, otherwise false)
        *   Specifies whether or not the script should build an edge mask for masked antialiasing
        *   Can be either True/False or one of the following mask presets: simple, simple-cmb, precise-cmb
        *   The mask is also used as a prescreener for eedi3 so using one will yield a considerable speedup
@@ -100,22 +108,24 @@ Parameters:
       *   Enables/Disables Sangnom2 based antialiasing on the luma and chroma channels
       *   Enabled if the supplied is an integer, which will be passed on as aa/aac parameters to Sangnom2 
    + [int] threads
-      *   Number of threads to be distributed to eedi3/nnedi3/Sangnom
+      *   Number of threads to be used by eedi3/nnedi3/Sangnom
    
 */
 
 function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool "lsb_out", int "y", int "u", int "v", string "fmt_in", string "fmt_out", int "dither",
-\                float "ee_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
-\                float "sharp",  string "kernel_d", bool "noring", string "matrix", bool "tv_range", string "cplace",
-\                val "mask", clip "mclip", int "mthr", bool "show", val "sa_aa", val "sa_aac", int "threads")
+\            string "kernel_d", bool "noring", string "matrix", bool "tv_range", string "cplace",
+\            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", bool "show", int "threads",
+\            float "ee_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
+\            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
+\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", int "lsf_strength", string "lsf_defaults")
 {
     aa_lst = "eedi3||eedi3+sangnom2||sangnom2"
     rsz_lst = "bicubic||catmull-rom||hermite||mitchell-netravali||robidoux||softcubic||blackman||lanczos||lanczos4||sinc||" 
            \ +"blackmanminlobe||box||rect||spline||spline144||spline16||spline36||spline64||bilinear||point"
     ss_lst = "nnedi3"
     
-    aa = Default(aa, "eedi3")
-    ss = Default(ss, "Spline36")
+    aa = Default(aa, "sangnom2")
+    ss = Default(ss, "nnedi3")
     kernel_d = Default(kernel_d, "Spline36")
     ssf = Default(ssf, Select(LuIsEq(aa, aa_lst, true), 1.0, 1.0, 2.0))
     ee_fac = Default(ee_fac, 2.0)
@@ -138,9 +148,6 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
     y_lg = (y == 3) ? 4 : y
     u_lg = (u == 3) ? 4 : u
     v_lg = (v == 3) ? 4 : v
-    #~ y_in = (y == 4) ? 2 : (y ==2) ? 3 : y     # Dither y/u/v == 2 -> copy msb
-    #~ u_in = (u == 4) ? 2 : (u ==2) ? 3 : u
-    #~ v_in = (v == 4) ? 2 : (v ==2) ? 3 : v
     mthr = Default(mthr, 30)
     proc_chroma = u==3 || v==3
     ee_fmt_out = (!proc_chroma) ? "Y8" : FmtIsYUV(fmt_out) ? fmt_out : "YV24"
@@ -153,30 +160,43 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
     ee_ssw = int(round(ssw*ee_fac/4.0)*4)
     ee_ssh = int(round(ssh*ee_fac/4.0)*4)
     
-    Assert(ssf > 0, "eedi3aa: Supersampling factor must be > 0")
+    Assert(ssf > 0, "haa: Supersampling factor must be > 0")
     Assert(!((FmtIsYUV(fmt_in) || fmt_in=="RGB48YV12" || fmt_in=="RGB48Y") && c.IsRGB),
-         \ "eedi3aa: input format "+fmt_in+" doesn't match detected colorspace "+c.PixelType+".")
-
+         \ "haa: input format "+fmt_in+" doesn't match detected colorspace "+c.PixelType+".")
+    
     # Handle val types
-    Assert(IsString(mask) || IsBool(mask) || !Defined(mask), "eedi3aa: mask must be either True/False or a mask preset") 
+    Assert(IsString(mask) || IsBool(mask) || !Defined(mask), "haa: mask must be either True/False or a mask preset") 
     mask_b = IsBool(mask) ? mask : (!Defined(mask) || IsString(mask)) ? true : false
-    mask_s = IsString(mask) ? mask : (mask_b) ? "simple" : Undefined
+    mask_s = IsString(mask) ? mask : (mask_b) ? "simple" : Undefined 
+    
+    Assert(IsString(sharp) || IsBool(sharp) || !Defined(sharp), "haa: sharp must be either True/False or a sharpening method") 
+    sharp_b = IsBool(sharp) ? sharp :  IsString(sharp) ? true : false
+    sharp_s = IsString(sharp) ? sharp : (sharp_b) ? "csmod" : Undefined
     
     Assert((IsInt(sa_aa) && sa_aa >= 0)  || IsBool(sa_aa)|| !Defined(sa_aa),
-         \ "eedi3aa: sa_aa must be either True/False or an integer >= 0")
+         \ "haa: sa_aa must be either True/False or an integer >= 0")
     sa_aa_b = IsBool(sa_aa) ? sa_aa : (IsInt(sa_aa) || LuIsEq(aa, "eedi3+sangnom2||sangnom2")) ? true : false
     sa_aa_i = IsInt(sa_aa) ? sa_aa : (sa_aa_b) ? 48 : Undefined()    
     
     Assert((IsInt(sa_aac) && sa_aac >= 0)  || IsBool(sa_aac)|| !Defined(sa_aac),
-         \ "eedi3aa: sa_aac must be either True/False or an integer >= 0")
+         \ "haa: sa_aac must be either True/False or an integer >= 0")
     sa_aac_b = IsBool(sa_aac) ? sa_aac : IsInt(sa_aac) ? true : false
     sa_aac_i = IsInt(sa_aac) ? sa_aac : (sa_aac_b) ? Max(sa_aa_i-8,0) : Undefined()
     sa_aa = sa_aa_b || sa_aac_b
+    Assert(!(sa_aac_b &&!proc_chroma), "haa: can't do chroma processing in Sangnom2 when chroma planes are not set to process")
 
+    Assert((IsInt(soothe) && 0 <= soothe <= 100) || IsBool(soothe) || !Defined(soothe), 
+         \ "haa: soothe must be either True/False or an integer between 0 and 100") 
+    soothe_b = IsBool(soothe) ? soothe : IsInt(soothe) ? true : false
+    soothe_i = IsInt(soothe) ? soothe : (soothe_b) ? 25 : Undefined
+    
     # number of threads
-    threads = Default(threads, (sa_aa)?6:4)
-    ee_threads = sa_aa ? threads/2 : threads
-    sthreads = ee_threads
+    # todo: optimize
+    #~ tfac = min((sa_aa)?1:0 + aa.LuisEq("eedi3||eedi3+sangnom2")?1:0 + (ss=="nnedi3")?1:0, 1)
+    threads = Default(threads, 4) 
+    ee_threads = threads
+    nn_threads = threads
+    sa_threads = threads
     
     c_yuv = c
     
@@ -212,7 +232,7 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
             mclip = c_yuv8.mt_edge("hprewitt", 0, 255, 0, 255, y=3, u=3, v=3).LuMergePlanes("max",1.5,1.5,2).mt_expand().mt_inpand()
                  \ .tmaskcleaner(30,30).mt_binarize(mthr).mt_inflate()
        }
-       else { Assert(false, "eedi3aa: no mask preset with name '" + String(mask_s) + "' found.") }
+       else { Assert(false, "haa: no mask preset with name '" + String(mask_s) + "' found.") }
     }
     # Mask preview
     if (show) {
@@ -221,39 +241,95 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
     # determine lsb processing
     lsb = lsb_in || lsb_out
     
-    # ss
-   (ssf != 1.0) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring, cplace=cplace, 
-                          \ y=y_aa, u=u_aa, v=v_aa, dither_mode=dither) : c_yuvp
-   mclip_ss = (ssf != 1.0) ? mclip.BilinearResize(ssw, ssh) : mclip
-
+   # ss
+   if (ssf != 1.0)
+   {
+       (ss == "nnedi3") ? c_yuvp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, Undefined, false, nn_nsize, nn_nns, 
+                                               \ nn_qual, nn_etype, nn_pscrn, nn_threads, 1.0, 0, false, Undefined, 
+                                               \ Undefined, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace, 
+                                               \ y_aa, u_aa, v_aa, lsb_in, lsb, dither)
+   \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring, 
+                                            \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
+   \ : Assert(false, "haa: unsupported supersampling method '" + ss + "'.")
+   mclip_ss = mclip.BilinearResize(ssw, ssh)
+   }
+   else
+   {
+        mclip_ss = mclip
+        c_yuvp
+   }
                                  
     # eedi3 aa
     if(LuIsEq(aa, "eedi3||eedi3+sangnom2"))
     {
         mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
         eedi3_resize(last, ee_ssw, ee_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
-        \              ee_threads, 1.0, sharp, false, Undefined, Undefined, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
+        \              ee_threads, 1.0, 0, false, Undefined, Undefined, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
         \               y_aa, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
+    }
+    
+    # 8 bit processing
+    if (sa_aa || sharp_b)
+    {
+      c16 = last
+      (lsb) ? DitherPost (mode=-1, y=y_aa, u=u_aa, v=v_aa) : last
+      (!sa_aac_b) ? ConvertToY8() : nop()
+      s_yxx8 = last
     }
     
     # SangNom2 aa
     # todo: allow chroma-only aa
     if (sa_aa)
     {
-        proc_chroma_s = sa_aac_b && proc_chroma
-        y_s = (sa_aa_b) ? 3 : 4
-        u_s = (proc_chroma_s) ? 3 : 4
-        v_s = u_s
+        s_yxx8 = SangNom2(0, sa_aa_i, sa_aac_i, sa_threads).TurnRight()
+              \ .SangNom2(0, sa_aa_i, sa_aac_i, sa_threads).TurnLeft()
+        s_yxx8
+    }
+
+    # Sharpening
+    # todo: add chroma support?
+    if (sharp_b)
+    {
+        if (sharp_s=="csmod") {
+            ConvertToYV12()
+            CSmod(edgemode=0, chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, 
+                \ Smethod=1, kernel=6, strength=cs_strength, Soothe=-1)
+        }
+        else if (sharp_s=="awarpsharp2") {
+            aw_depth = Default(aw_depth, 4)
+            #~ u_w = (proc_chroma) ? 3 : (sa_aac_b) ? 2 : 1
+            ConvertToYV12().aWarpSharp2(aw_thresh, aw_blur, Undefined, aw_depth, chroma=1)
+        }
+        else if (sharp_s=="awarp4") {
+            aw_depth = Default(aw_depth, 2)
+            #~ u_w = (proc_chroma) ? 3 : (sa_aac_b) ? 2 : 1
+            ConvertToYV12()
+            s_yxx8 = s_yxx8.Resize8(sw, sh, kernel="Spline36", cplace=cplace)
+            c16 = c16.LUResize(sw, sh, lsb_in=lsb, cplace=cplace, tv_range=tv_range)
+            # todo: fix inaccurate shift
+            aWarp4(Resize8(sw*4, sh*4, 0.375*(width/sw), 0.375*(height/sh), kernel="Spline36", u=false, v=false),
+                 \ s_yxx8.ConvertToYV12().aSobel(aw_thresh,1).aBlur(aw_blur, 1, 1), aw_depth, 1)
+        }
+        else if (sharp_s=="lsfmod") {
+            ConvertToYV12()
+            lsf_strength = Default(lsf_strength, 60)
+            lsf_defaults = Default(lsf_defaults, "fast")
+            lsfmod(defaults=lsf_defaults, strength=lsf_strength, ss_x=1, ss_y=1, soothe=false)
+        }
+        else { Assert(false, "haa: unsupported sharpen method '" + sharp_s + "'.") }
         
-        s_yuv8 = (lsb) ? DitherPost (mode=-1, y=y_aa, u=u_aa, v=v_aa) : last
-        s_yxx8 = (proc_chroma_s) ? s_yuv8.ConvertToY8() : s_yuv8
-        s_yxx8 = s_yxx8.SangNom2(0, sa_aa_i, sa_aac_i, sthreads).TurnRight()
-                     \ .SangNom2(0, sa_aa_i, sa_aac_i, sthreads).TurnLeft()
-        s_yxx16 = s_yxx8.Lu8To16(tv_range, true, proc_chroma_s)
-        (lsb) ? last.LuMatchCSP(s_yuv8).Dither_limit_dif16(s_yxx16, thr=1.0, elast=2.0, y=y_s, u=u_s, v=v_s) : s_yxx8
+        (soothe_b) ? last.Soothe(s_yxx8, keep=soothe_i) : nop()
+    }
+
+    # back to 16 bit
+    if (sa_aa || sharp_b)
+    {
+        (sa_aac_b) ? last.MergeChroma(s_yxx8) : last
+        u_s = (sa_aac_b) ? 3 : 2
+        (lsb) ? c16.Dither_limit_dif16(last.Lu8To16(tv_range, true, sa_aac_b).LuMatchCSP(c16),
+                                     \ thr=1.0, elast=2.0, y=3, u=u_s, v=u_s) : last
     }
     
-
     # Downscale
     LUResize(sw, sh, lsb_in=lsb, lsb_out=lsb_out, kernel=kernel_d, tv_range=tv_range, noring=false,
            \ cplace=cplace, dither_mode=dither, y=y_aa, u=u_aa, v=v_aa)
