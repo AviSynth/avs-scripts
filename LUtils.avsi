@@ -469,11 +469,11 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
     lsb = lsb_mask ? true : Default(lsb, lsb_out)
     tv_range = Default(tv_range, true)
     y = Default(y,3)
-    u = Default(u,3)
+    u = Default(u,(Defined(luma)&&luma)?3:2)
     v = Default(v,u)
+    luma = Default(luma, (u!=3 && v!=3) ? false : (mask.IsY8) ? true : false)
     scale = Default(scale, (y < -255 || u < -255 || v < -255) ? false : true)
     # use luma plane of a Y8 mask clip for chroma channels by default if the chroma planes are going to be processed
-    luma = Default(luma, (u!=3 && v!=3) ? false : (mask.IsY8) ? true : false)
     Assert(!(mask.IsY8 && !luma && (u==3 || v==3)), "LuMerge: mask is clip is missing the chroma plane(s) required "
                                                  \ +"to process the chroma plane(s) of the input clips." )
 
@@ -490,6 +490,10 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
                        \ +"or copied from the Y8 clip.")
         }
         
+    }
+    
+    if(lsb && mask.IsY8 && !c1.IsY8 && ((u!=3 && v!=3) || luma==true)) {
+        mask = mask.LuMatchCSP(c1)
     }
     
     if(scale && lsb)
@@ -564,4 +568,15 @@ function LuLimitDif(clip  flt, clip src, clip  "ref", float "thr", float "elast"
    
     return (lsb_out) ? last : last.Lu16To8(tv_range, y!=1, u!=1, v!=1)
 
+}
+
+function LuBlankClip(clip c, int "length", int "w", int "h", string "pixel_type", int "fps", int "fps_denominator",
+                   \ int "color", int "color_yuv", bool "lsb_in")
+{
+    lsb_in = Default(lsb_in, false)
+    w = Default(w, c.Width)
+    h = Default(h, c.Height/2)
+    h = (lsb_in) ? h*2 : h
+    
+    return c.BlankClip(length, w, h, pixel_type, fps, fps_denominator, color=color, color_yuv=color_yuv)
 }
