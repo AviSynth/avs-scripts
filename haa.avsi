@@ -3,16 +3,12 @@ haa v0.1
 ====================
 
 Antialiasing script that works both in 16-bit and 8-bit.
-Focus is on quality rather than speed, defaults to eedi3 based aa for now.
+Supports multiple antialiasing and supersampling methods (sangnom2, eedi3, nnedi3, resize kernels), masking and sharpening.
 
-** WIP - everything subject to change without notice **
-still missing: 
-   * some mask presets
-   * pre-aa downscaling
-   * aarepair?
-   * visualization of chroma masking
+**WIP - everything subject to change without notice**
 
 Requirements:
+
    * AviSynth+ 
    * Dither v1.24.0
    * eedi3 v0.9.2 (Firesledge mod)
@@ -32,16 +28,17 @@ Requirements:
    * LSFmod 1.9 (and prerequisites)
 
 Input Formats: 
-    * Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
-    * RGB24/RGB32
-    * RGB48Y/RGB48YV12
+
+   * Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
+   * RGB24/RGB32
+   * RGB48Y/RGB48YV12
     
     
 Parameters:
 
-   + [string] aa (eedi3)
+   + [string] aa (sangnom2)
        *   Antiaaliasing method. Currently supported: eedi3, eedi3+sangnom2, sangnom2 
-   + [string] ss (Spline36)
+   + [string] ss (nnedi3)
        *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3 (tbd)
    + [float] ssf (1.0 for eedi3/eedi3+sangnom2; 2.0 for sangnom2)
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
@@ -108,7 +105,7 @@ Parameters:
       *   Enables/Disables Sangnom2 based antialiasing on the luma and chroma channels
       *   Enabled if the supplied is an integer, which will be passed on as aa/aac parameters to Sangnom2 
    + [int] threads
-      *   Number of threads to be used by eedi3/nnedi3/Sangnom
+      *   Number of threads to be used by eedi3/nnedi3/Sangnom2
    
 */
 
