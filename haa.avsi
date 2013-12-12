@@ -27,6 +27,7 @@ Requirements:
    * aWarpSharp2
    * LSFmod 1.9 (and prerequisites)
    * MSharpen 0.9
+   * Variableblur 0.5
 
 Input Formats: 
 
@@ -70,6 +71,7 @@ Parameters:
            *    "lsfmod" : LSFmod with configurable defaults and strength
            *    "awarpsharp2" : aWarpSharp2 applied at supersampling resolution (ssf*ee_fac)
            *    "awarp4" : aWarpSharp2 applied at 4x source resolution 
+           *    "msharpen" : MSharpen
    + [int] cs_strength (75)
        *   Contra sharpening strength
    + [int] aw_thresh, aw_blur, aw_depth (4 for awarpsharp2; 2 for awarp4)
@@ -91,7 +93,11 @@ Parameters:
        *   Chroma siting of the clip to be processed (refer to the Dither docs for more information)
    + [bool/string] mask (simple if no mclip is specified, otherwise false)
        *   Specifies whether or not the script should build an edge mask for masked antialiasing
-       *   Can be either True/False or one of the following mask presets: simple, simple-cmb, precise-cmb
+       *   Can be either True/False or one of the following mask presets:
+           *    simple: simple and fast mask, one for each plane
+           *    simple-cmb: like simple, but uses a combined mask for all planes
+           *    precise-cmb: cleaned mask that tries to skip small details
+           *    lines: use this preset for a rather strict "line" mask that skips small details as well as larger detailed areas
        *   The mask is also used as a prescreener for eedi3 so using one will yield a considerable speedup
    + [clip] mclip (Undefined)
       *   Allows you to bring your own mask instead of relying on haa's internal masking
@@ -223,22 +229,28 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
        c_yuv8 = (lsb_in) ? c_yuv.DitherPost(mode=-1) : c_yuv
     
        if(mask_s == "simple") {
-            mclip = c_yuv8.mt_edge("hprewitt", mthr, mthr, mthr/2, mthr/2, y_msk, u_msk, v_msk).RemoveGrain(17)
+            mclip = c_yuv8.mt_edge("prewitt", mthr, mthr, mthr/2, mthr/2, y_msk, u_msk, v_msk).RemoveGrain(17)
                  \ .mt_expand(y=y_msk, u=u_msk, v=v_msk).mt_inflate(y=y_msk, u=u_msk, v=v_msk)
        }
        else if (mask_s == "simple-cmb") {
             mclip = c_yuv8.mt_edge("prewitt", 0, 255, 0, 255, y=3, u=3, v=3).LuMergePlanes("max",1.5,1.5)
                  \ .mt_binarize(mthr).RemoveGrain(17,-1).mt_expand().mt_inflate()
        }
-       else if (mask_s == "precise-cmb") {    
+       else if (mask_s == "precise-cmb") {
             mclip = c_yuv8.mt_edge("hprewitt", 0, 255, 0, 255, y=3, u=3, v=3).LuMergePlanes("max",1.5,1.5,2).mt_expand().mt_inpand()
-                 \ .tmaskcleaner(30,30).mt_binarize(mthr).mt_inflate()
+                 \ .tmaskcleaner(sh/36,30).mt_binarize(mthr).mt_inflate()
+       }
+       else if (mask_s == "lines") {
+            # mask by tophf
+            lines = c_yuv8.ConvertToY8().mt_lutxy(c_yuv8.binomialblur(3,u=1,v=1), "x " + String(mthr/7) + " + y < y x - 64 * 0 ?")
+            lexp = lines.mt_expand_multi(sw=3,sh=3).mt_inpand_multi(sw=4,sh=4)
+            mclip = lexp.removegrain(17,-1).mt_lutxy(lines,"y x -").mt_expand.tmaskcleaner(sh/16)
        }
        else { Assert(false, "haa: no mask preset with name '" + String(mask_s) + "' found.") }
     }
     # Mask preview
     if (show) {
-        return c_yuv.mt_lut(y=2, u=0, v=0).mt_merge(c_yuv, mclip, u=3, v=3)
+        return c_yuv8.mt_merge(c_yuv8.mt_lut(y=2, u=0, v=0), mclip, u=3, v=3, luma=true)
     }
     # determine lsb processing
     lsb = lsb_in || lsb_out
