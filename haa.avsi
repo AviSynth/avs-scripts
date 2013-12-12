@@ -9,15 +9,15 @@ Supports multiple antialiasing and supersampling methods (sangnom2, eedi3, nnedi
 
 Requirements:
 
-   * AviSynth+ 
+   * AviSynth+ r1555
    * Dither v1.24.0
    * eedi3 v0.9.2 (Firesledge mod)
-   * eedi3_resize16 v0.1
+   * eedi3_resize v0.1
    * nnedi3 v0.9.4
    * nnedi3_resize16 v3.0
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
-   * Masktools v2.0a48tp7fix5
+   * Masktools v2.0b1
    * LUtils v0.1
    * Resize8 v1.1
    * RgTools v0.91
@@ -44,6 +44,7 @@ Parameters:
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
    + [bool] lsb_in (false), lsb_out (lsb_in)
        *   Tells the script whether the input clips are 16-bit stacked or 8 bit
+       *   Setting either of these parameters to true will enable lsb processing (which results in a speed hit)
    + [int] y (3), u (2), v (u)
        *   Processing options for y/u/v planes:
            *  -x..0 : All the pixels of the plane will be set to -x (disables processing)
@@ -248,7 +249,7 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
    \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring, 
                                             \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
    \ : Assert(false, "haa: unsupported supersampling method '" + ss + "'.")
-   mclip_ss = mclip.BilinearResize(ssw, ssh)
+   mclip_ss = Defined(mclip) ? mclip.BilinearResize(ssw, ssh) : nop()
    }
    else
    {
