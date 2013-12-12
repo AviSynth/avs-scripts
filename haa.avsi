@@ -26,6 +26,7 @@ Requirements:
    * Soothe
    * aWarpSharp2
    * LSFmod 1.9 (and prerequisites)
+   * MSharpen 0.9
 
 Input Formats: 
 
@@ -75,6 +76,8 @@ Parameters:
        *   Parameters passed to aWarpSharp2 (refer to awarpsharp2 docs for more information)
    + [various] lsf_strength (60), lsf_defaults (fast)
        *   Parameters passed to LSFmod (refer to LSFmod docs for more information)
+   + [int] ms_strength (50), ms_threshold
+       *   Parameters passed to MSharpen (refer to MSharpen docs for more information)
    + [string] kernel_d (Spline36)
        *   Kernel to use for downscaling back to the source resolution
    + [bool] noring (false)
@@ -115,7 +118,8 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
 \            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", bool "show", int "threads",
 \            float "ee_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
 \            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
-\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", int "lsf_strength", string "lsf_defaults")
+\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", int "lsf_strength", string "lsf_defaults", 
+\            int "ms_threshold", int "ms_strength")
 {
     aa_lst = "eedi3||eedi3+sangnom2||sangnom2"
     rsz_lst = "bicubic||catmull-rom||hermite||mitchell-netravali||robidoux||softcubic||blackman||lanczos||lanczos4||sinc||" 
@@ -313,6 +317,10 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
             lsf_strength = Default(lsf_strength, 60)
             lsf_defaults = Default(lsf_defaults, "fast")
             lsfmod(defaults=lsf_defaults, strength=lsf_strength, ss_x=1, ss_y=1, soothe=false)
+        }
+        else if (sharp_s=="msharpen") {
+            ms_strength=Default(ms_strength, 50)
+            msharpen(ms_threshold, ms_strength)
         }
         else { Assert(false, "haa: unsupported sharpen method '" + sharp_s + "'.") }
         
