@@ -1,7 +1,7 @@
 avs-scripts
 ===========
    * [eedi3_resize] (#eedi3_resize)
-   * [haa] (#haa)
+   * [HiAA] (#HiAA)
    * [LUtils] (#LUtils)
    * [MAA2] (#MAA2)
 
@@ -31,7 +31,7 @@ Parameters:
    * tbd
 
 
-haa
+HiAA
 ---
 
 Antialiasing script that works both in 16-bit and 8-bit.
@@ -50,7 +50,7 @@ Requirements:
    * nnedi3_resize16 v3.0
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
-   * Masktools v2.0a48tp7fix5
+   * Masktools v2.0b1
    * LUtils v0.1
    * Resize8 v1.1
    * RgTools v0.91
@@ -59,6 +59,8 @@ Requirements:
    * Soothe
    * aWarpSharp2
    * LSFmod 1.9 (and prerequisites)
+   * MSharpen 0.9
+   * Variableblur 0.5
 
 Input Formats: 
 
@@ -77,7 +79,7 @@ Parameters:
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
    + [bool] lsb_in (false), lsb_out (lsb_in)
        *   Tells the script whether the input clips are 16-bit stacked or 8 bit
-       *   Setting either of these parameters to true, will enable lsb processing (which results in a speed hit)
+       *   Setting either of these parameters to true will enable lsb processing (which results in a speed hit)
    + [int] y (3), u (2), v (u)
        *   Processing options for y/u/v planes:
            *  -x..0 : All the pixels of the plane will be set to -x (disables processing)
@@ -102,12 +104,15 @@ Parameters:
            *    "lsfmod" : LSFmod with configurable defaults and strength
            *    "awarpsharp2" : aWarpSharp2 applied at supersampling resolution (ssf*ee_fac)
            *    "awarp4" : aWarpSharp2 applied at 4x source resolution 
+           *    "msharpen" : MSharpen
    + [int] cs_strength (75)
        *   Contra sharpening strength
    + [int] aw_thresh, aw_blur, aw_depth (4 for awarpsharp2; 2 for awarp4)
        *   Parameters passed to aWarpSharp2 (refer to awarpsharp2 docs for more information)
    + [various] lsf_strength (60), lsf_defaults (fast)
        *   Parameters passed to LSFmod (refer to LSFmod docs for more information)
+   + [int] ms_strength (50), ms_threshold
+       *   Parameters passed to MSharpen (refer to MSharpen docs for more information)
    + [string] kernel_d (Spline36)
        *   Kernel to use for downscaling back to the source resolution
    + [bool] noring (false)
@@ -121,14 +126,18 @@ Parameters:
        *   Chroma siting of the clip to be processed (refer to the Dither docs for more information)
    + [bool/string] mask (simple if no mclip is specified, otherwise false)
        *   Specifies whether or not the script should build an edge mask for masked antialiasing
-       *   Can be either True/False or one of the following mask presets: simple, simple-cmb, precise-cmb
+       *   Can be either True/False or one of the following mask presets:
+           *    simple: simple and fast mask, one for each plane
+           *    simple-cmb: like simple, but uses a combined mask for all planes
+           *    precise-cmb: cleaned mask that tries to skip small details
+           *    lines: use this preset for a rather strict "line" mask that skips small details as well as larger detailed areas
        *   The mask is also used as a prescreener for eedi3 so using one will yield a considerable speedup
    + [clip] mclip (Undefined)
-      *   Allows you to bring your own mask instead of relying on haa's internal masking
+      *   Allows you to bring your own mask instead of relying on HiAA's internal masking
       *   The mask must be 8-bit YUV and of the same resolution as the source clip
-      *   If you supply an Y8 mask, haa will automatically used its Y plane for masking all processed source planes
+      *   If you supply an Y8 mask, HiAA will automatically used its Y plane for masking all processed source planes
       *   For other color spaces the chroma subsampling must match that of the input clip (use YV24 for RGB input)
-          and haa will mask all planes separatly
+          and HiAA will mask all planes separatly
    + [int] mthr (30)
       *   Binarization threshold for the internal masking. 
       *   Decrease if the masking misses aliased edges, increase if the mask includes pristine details and flat areas
