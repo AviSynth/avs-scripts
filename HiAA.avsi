@@ -1,5 +1,5 @@
 /*
-haa v0.1
+HiAA v0.1
 ====================
 
 Antialiasing script that works both in 16-bit and 8-bit.
@@ -100,11 +100,11 @@ Parameters:
            *    lines: use this preset for a rather strict "line" mask that skips small details as well as larger detailed areas
        *   The mask is also used as a prescreener for eedi3 so using one will yield a considerable speedup
    + [clip] mclip (Undefined)
-      *   Allows you to bring your own mask instead of relying on haa's internal masking
+      *   Allows you to bring your own mask instead of relying on HiAA's internal masking
       *   The mask must be 8-bit YUV and of the same resolution as the source clip
-      *   If you supply an Y8 mask, haa will automatically used its Y plane for masking all processed source planes
+      *   If you supply an Y8 mask, HiAA will automatically used its Y plane for masking all processed source planes
       *   For other color spaces the chroma subsampling must match that of the input clip (use YV24 for RGB input)
-          and haa will mask all planes separatly
+          and HiAA will mask all planes separatly
    + [int] mthr (30)
       *   Binarization threshold for the internal masking. 
       *   Decrease if the masking misses aliased edges, increase if the mask includes pristine details and flat areas
@@ -119,7 +119,7 @@ Parameters:
    
 */
 
-function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool "lsb_out", int "y", int "u", int "v", string "fmt_in", string "fmt_out", int "dither",
+function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool "lsb_out", int "y", int "u", int "v", string "fmt_in", string "fmt_out", int "dither",
 \            string "kernel_d", bool "noring", string "matrix", bool "tv_range", string "cplace",
 \            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", bool "show", int "threads",
 \            float "ee_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
@@ -168,33 +168,33 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
     ee_ssw = int(round(ssw*ee_fac/4.0)*4)
     ee_ssh = int(round(ssh*ee_fac/4.0)*4)
     
-    Assert(ssf > 0, "haa: Supersampling factor must be > 0")
+    Assert(ssf > 0, "HiAA: Supersampling factor must be > 0")
     Assert(!((FmtIsYUV(fmt_in) || fmt_in=="RGB48YV12" || fmt_in=="RGB48Y") && c.IsRGB),
-         \ "haa: input format "+fmt_in+" doesn't match detected colorspace "+c.PixelType+".")
+         \ "HiAA: input format "+fmt_in+" doesn't match detected colorspace "+c.PixelType+".")
     
     # Handle val types
-    Assert(IsString(mask) || IsBool(mask) || !Defined(mask), "haa: mask must be either True/False or a mask preset") 
+    Assert(IsString(mask) || IsBool(mask) || !Defined(mask), "HiAA: mask must be either True/False or a mask preset") 
     mask_b = IsBool(mask) ? mask : (!Defined(mask) || IsString(mask)) ? true : false
     mask_s = IsString(mask) ? mask : (mask_b) ? "simple" : Undefined 
     
-    Assert(IsString(sharp) || IsBool(sharp) || !Defined(sharp), "haa: sharp must be either True/False or a sharpening method") 
+    Assert(IsString(sharp) || IsBool(sharp) || !Defined(sharp), "HiAA: sharp must be either True/False or a sharpening method") 
     sharp_b = IsBool(sharp) ? sharp :  IsString(sharp) ? true : false
     sharp_s = IsString(sharp) ? sharp : (sharp_b) ? "csmod" : Undefined
     
     Assert((IsInt(sa_aa) && sa_aa >= 0)  || IsBool(sa_aa)|| !Defined(sa_aa),
-         \ "haa: sa_aa must be either True/False or an integer >= 0")
+         \ "HiAA: sa_aa must be either True/False or an integer >= 0")
     sa_aa_b = IsBool(sa_aa) ? sa_aa : (IsInt(sa_aa) || LuIsEq(aa, "eedi3+sangnom2||sangnom2")) ? true : false
     sa_aa_i = IsInt(sa_aa) ? sa_aa : (sa_aa_b) ? 48 : Undefined()    
     
     Assert((IsInt(sa_aac) && sa_aac >= 0)  || IsBool(sa_aac)|| !Defined(sa_aac),
-         \ "haa: sa_aac must be either True/False or an integer >= 0")
+         \ "HiAA: sa_aac must be either True/False or an integer >= 0")
     sa_aac_b = IsBool(sa_aac) ? sa_aac : IsInt(sa_aac) ? true : false
     sa_aac_i = IsInt(sa_aac) ? sa_aac : (sa_aac_b) ? Max(sa_aa_i-8,0) : Undefined()
     sa_aa = sa_aa_b || sa_aac_b
-    Assert(!(sa_aac_b &&!proc_chroma), "haa: can't do chroma processing in Sangnom2 when chroma planes are not set to process")
+    Assert(!(sa_aac_b &&!proc_chroma), "HiAA: can't do chroma processing in Sangnom2 when chroma planes are not set to process")
 
     Assert((IsInt(soothe) && 0 <= soothe <= 100) || IsBool(soothe) || !Defined(soothe), 
-         \ "haa: soothe must be either True/False or an integer between 0 and 100") 
+         \ "HiAA: soothe must be either True/False or an integer between 0 and 100") 
     soothe_b = IsBool(soothe) ? soothe : IsInt(soothe) ? true : false
     soothe_i = IsInt(soothe) ? soothe : (soothe_b) ? 25 : Undefined
     
@@ -246,7 +246,7 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
             lexp = lines.mt_expand_multi(sw=3,sh=3).mt_inpand_multi(sw=4,sh=4)
             mclip = lexp.removegrain(17,-1).mt_lutxy(lines,"y x -").mt_expand.tmaskcleaner(sh/16)
        }
-       else { Assert(false, "haa: no mask preset with name '" + String(mask_s) + "' found.") }
+       else { Assert(false, "HiAA: no mask preset with name '" + String(mask_s) + "' found.") }
     }
     # Mask preview
     if (show) {
@@ -264,7 +264,7 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
                                                \ y_aa, u_aa, v_aa, lsb_in, lsb, dither)
    \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring, 
                                             \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
-   \ : Assert(false, "haa: unsupported supersampling method '" + ss + "'.")
+   \ : Assert(false, "HiAA: unsupported supersampling method '" + ss + "'.")
    mclip_ss = Defined(mclip) ? mclip.BilinearResize(ssw, ssh) : nop()
    }
    else
@@ -334,7 +334,7 @@ function haa(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool 
             ms_strength=Default(ms_strength, 50)
             msharpen(ms_threshold, ms_strength)
         }
-        else { Assert(false, "haa: unsupported sharpen method '" + sharp_s + "'.") }
+        else { Assert(false, "HiAA: unsupported sharpen method '" + sharp_s + "'.") }
         
         (soothe_b) ? last.Soothe(s_yxx8, keep=soothe_i) : nop()
     }
