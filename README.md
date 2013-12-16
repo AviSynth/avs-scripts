@@ -11,7 +11,7 @@ eedi3_resize
 
 eedi3 based resizing script that allows to resize to arbitrary resolutions while maintaining the correct image center and chroma location. ~~Shamelessly copy-pasted from~~ Based on mawen1250s nnedi3_resize16 v3.0. Can work both in 8-bit and 16-bit.
 
-Script version: 0.1
+Script version: 0.11
 
 Requirements:
 
@@ -24,11 +24,75 @@ Requirements:
    * LUtils v0.1
 
 Input Formats: Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
-    
-    
+
 Parameters:
 
-   * tbd
+   + [int] target_width, target_height (source width/height)
+       *   Resolution to resize to. Arbitrary resolutions are realized with Dither resizers. 
+   + [float] src_left (0), src_top (0), src_width(source width), src_height (source height)
+       *   Parameters for cropping before resizing
+   + [string] kernel_d (Spline36)
+       *   Dither resizing kernel used for downscaling
+       *   This kernel will also be used when upscaling to arbitrary resolutions that are not exactly multiples of 2
+   + [string] kernel_u (Spline64)
+       *   Dither resizing kernel used for upscaling
+   + [bool] noring (false)
+       *   Use non-ringing algorithms for Dither resizers
+       *   Enabling this is not recommended, because eedi3_resize will use eedi3 for upscaling edges, anyway
+       *   Downscaling with non-ringing resizers may result in blurring and aliasing artifacts
+   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0)
+       *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
+   + [float] ratiothr (1.125)
+       *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of 
+           the eedi3+Dither_resize16 combo
+   + [float] sharp (0)
+       *   Strength of contra-sharpening applied to the upscaled clip
+       *   A value of 0 disabled sharpening, sensible values are around 50-100
+   + [bool] mixed (true)
+       *   By default, eedi3_resize uses eedi3 (8-bit) and Dither resizers (16-bit) for edge areas
+       *   If this parameter is enabled, the script will only use 16-bit Dither resizers for scaling flat areas to increase precision
+       *   Disable this if you want flat areas to be resized using eedi3+Dither_resize16
+   + [float] thr (1.0), elast (1.5)
+       *   Threshold and elasticity for merging eedi3 output into the clip upscaled with 16-bit Dither resizers
+       *   Increase thr to take less pixels from the eedi3 upscaled clip
+       *   Increase elast to increase blending between pixels from the eedi3 and Dither upscaled sclips for smoother transitions
+   + [string] output (input colorspace)
+       *   Output format/color space
+       *   May be either one of the AviSynth internal colorspace or one of the Dither formats (RGB48Y, RGB48YV12)
+   + [string] curve (linear)
+       *   Setting this parameter to any of the following values enables resizing in linear light:
+           *   "709", "601", "170", "240", "sRGB", "2020"
+       *   refer to the Dither documentation (Dither_y_gamma_to_linear) for more information
+   + [float] gcor (1.0)
+       *   Gamma correction to be applied when converting to linear light
+       *   Requires curve to be something else than "linear"
+   + [string] matrix (resolution-based)
+       *   Matrix used for YUV->RGB conversion
+       *   Defaults to "709" for HD material, "601" for SD material
+       *   Refer to the Dither docs (Dither_convert_yuv_to_rgb) for more information
+   + [bool] tv_range (true)
+       *   Indicates whether the input clip is in TV or PC (full) range
+   + [bool] cplace (MPEG2)
+       *   Placement of the chroma samples on 4:2:0 YUV formats
+       *   Supported values are MPEG2 and MPEG1
+   + [int] y (3), u (2), v (u)
+       *   Processing options for y/u/v planes:
+           *  -x..0 : All the pixels of the plane will be set to -x (disables processing)
+           *      1 : Disables processing of the plane (plane will contain garbage)
+           *      2 : Copies plane from the input clip (disables processing) 
+           *      3 : Plane will processed
+   + [bool] lsb_in (false), lsb_out (lsb_in)
+       *   Tells the script whether the input/output clips are 16-bit stacked or 8 bit
+   + [bool] lsb
+       *   When enabled, processing will be done in high bitdepth for increased precision and smooth gradients (but at the cost of speed)
+       *   When disabled, eedi3_resize will use 8-bit resizers instead of 16-bit resizers
+       *   Setting either lsb_in or lsb_out to true will enable high-bitdepth processing by default
+       *   High-bitdepth processing is always enabled for RGB output, regardless of what the lsb parameter is set to
+   + [int] dither (6)
+       * Dither mode for 16->8-bit coversion
+       * Refer to the Dither docs (DitherPost) for more information on the various dithering modes
+   + [clip] mclip (Undefined)
+       *   mask clip to be used as prescreener for eedi3. Depending on the content, it usually results in a significant speed gain
 
 
 HiAA
@@ -37,7 +101,7 @@ HiAA
 Antialiasing script that works both in 16-bit and 8-bit.
 Supports multiple antialiasing and supersampling methods (sangnom2, eedi3, nnedi3, resize kernels), masking and sharpening.
 
-Script version: 0.1
+Script version: 0.11
 **WIP - everything subject to change without notice**
 
 Requirements:
