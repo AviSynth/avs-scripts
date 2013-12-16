@@ -1,8 +1,11 @@
 /*
-eedi3_resize v0.1
+eedi3_resize v0.11
 ====================
 
-shamelessly stolen from mawen1250s nnedi3_resize16 v3.0
+eedi3 based resizing script that allows to resize to arbitrary resolutions 
+while maintaining the correct image center and chroma location.
+~~Shamelessly copy-pasted from~~ Based on mawen1250s nnedi3_resize16 v3.0.
+Can work both in 8-bit and 16-bit.
 
 Requirements:
 
@@ -12,10 +15,11 @@ Requirements:
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
    * Masktools 2.0a48
+   * LUtils v0.1
 
 Input Formats: Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
-    
-    
+
+
 Parameters:
 
    + [int] target_width, target_height (source width/height)
@@ -23,14 +27,69 @@ Parameters:
    + [float] src_left (0), src_top (0), src_width(source width), src_height (source height)
        *   Parameters for cropping before resizing
    + [string] kernel_d (Spline36)
-       *   Resizing kernel used for flat area downscaling & edge area rescaling 
-   
-   TODO: move parameter documentation to the top
+       *   Dither resizing kernel used for downscaling
+       *   This kernel will also be used when upscaling to arbitrary resolutions that are not exactly multiples of 2
+   + [string] kernel_u (Spline64)
+       *   Dither resizing kernel used for upscaling
+   + [bool] noring (false)
+       *   Use non-ringing algorithms for Dither resizers
+       *   Enabling this is not recommended, because eedi3_resize will use eedi3 for upscaling edges, anyway
+       *   Downscaling with non-ringing resizers may result in blurring and aliasing artifacts
+   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0)
+       *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
+   + [float] ratiothr (1.125)
+       *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of 
+           the eedi3+Dither_resize16 combo
+   + [float] sharp (0)
+       *   Strength of contra-sharpening applied to the upscaled clip
+       *   A value of 0 disabled sharpening, sensible values are around 50-100
+   + [bool] mixed (true)
+       *   By default, eedi3_resize uses eedi3 (8-bit) and Dither resizers (16-bit) for edge areas
+       *   If this parameter is enabled, the script will only use 16-bit Dither resizers for scaling flat areas to increase precision
+       *   Disable this if you want flat areas to be resized using eedi3+Dither_resize16
+   + [float] thr (1.0), elast (1.5)
+       *   Threshold and elasticity for merging eedi3 output into the clip upscaled with 16-bit Dither resizers
+       *   Increase thr to take less pixels from the eedi3 upscaled clip
+       *   Increase elast to increase blending between pixels from the eedi3 and Dither upscaled sclips for smoother transitions
+   + [string] output (input colorspace)
+       *   Output format/color space
+       *   May be either one of the AviSynth internal colorspace or one of the Dither formats (RGB48Y, RGB48YV12)
+   + [string] curve (linear)
+       *   Setting this parameter to any of the following values enables resizing in linear light:
+           *   "709", "601", "170", "240", "sRGB", "2020"
+       *   refer to the Dither documentation (Dither_y_gamma_to_linear) for more information
+   + [float] gcor (1.0)
+       *   Gamma correction to be applied when converting to linear light
+       *   Requires curve to be something else than "linear"
+   + [string] matrix (resolution-based)
+       *   Matrix used for YUV->RGB conversion
+       *   Defaults to "709" for HD material, "601" for SD material
+       *   Refer to the Dither docs (Dither_convert_yuv_to_rgb) for more information
+   + [bool] tv_range (true)
+       *   Indicates whether the input clip is in TV or PC (full) range
+   + [bool] cplace (MPEG2)
+       *   Placement of the chroma samples on 4:2:0 YUV formats
+       *   Supported values are MPEG2 and MPEG1
+   + [int] y (3), u (2), v (u)
+       *   Processing options for y/u/v planes:
+           *  -x..0 : All the pixels of the plane will be set to -x (disables processing)
+           *      1 : Disables processing of the plane (plane will contain garbage)
+           *      2 : Copies plane from the input clip (disables processing) 
+           *      3 : Plane will processed
+   + [bool] lsb_in (false), lsb_out (lsb_in)
+       *   Tells the script whether the input/output clips are 16-bit stacked or 8 bit
+   + [bool] lsb
+       *   When enabled, processing will be done in high bitdepth for increased precision and smooth gradients (but at the cost of speed)
+       *   When disabled, eedi3_resize will use 8-bit resizers instead of 16-bit resizers
+       *   Setting either lsb_in or lsb_out to true will enable high-bitdepth processing by default
+       *   High-bitdepth processing is always enabled for RGB output, regardless of what the lsb parameter is set to
+   + [int] dither (6)
+       * Dither mode for 16->8-bit coversion
+       * Refer to the Dither docs (DitherPost) for more information on the various dithering modes
+   + [clip] mclip (Undefined)
+       *   mask clip to be used as prescreener for eedi3. Depending on the content, it usually results in a significant speed gain
        
 */
-
-
-
 
 Function eedi3_resize(clip input, int "target_width", int "target_height", float "src_left", float "src_top",
 \                        float "src_width", float "src_height", string "kernel_d", string "kernel_u", bool "noring",
@@ -40,20 +99,10 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
 \                        int "Y", int "U", int "V", bool "lsb_in", bool "lsb_out", bool "lsb", int "dither", clip "mclip")
 {
     # Parameters for merging edge&flat upscaled clip
-    mixed    = Default(mixed,    True   )   # whether to use 16bit resizer in flat area when upscaling, which achieves better quality at the cost of speed.
-    thr      = Default(thr,      1.0    )   # the same with "thr"   in Dither_limit_dif16, valid value range is [0, 10.0], set to 0 will disable the limiting process.
-    elast    = Default(elast,    1.0    )   # the same with "elast" in Dither_limit_dif16, valid value range is [1, 10.0].
-                                            # PDiff: pixel value diff between flat   clip and edge clip
-                                            # ODiff: pixel value diff between merged clip and edge clip
-                                            # ODiff = PDiff when (PDiff <= thr)
-                                            # ODiff gradually decreases from thr to 0 when (thr <= PDiff <= thr * elast)
-                                            # ODiff = 0     when (PDiff >= thr * elast)
-                                            #
-                                            # Larger "thr"   will result in more pixels been taken from flat area upscaled clip(Dither_resize16)
-                                            # Larger "thr"   will result in less pixels been taken from edge area upscaled clip(eedi3+Dither_resize16)
-                                            # Larger "elast" will result in more pixels been blended from edge&flat area upscaled clip
-    
-    
+    mixed    = Default(mixed,    True   )
+    thr      = Default(thr,      1.0    )
+    elast    = Default(elast,    1.5    )
+
     # Parameters for eedi3
     mclip    = Default(mclip, Undefined())
     alpha    = Default(alpha,      0.4   )
@@ -64,43 +113,28 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     hp       = Default(hp,        false  )
     threads  = Default(threads,    0     )
     
-    
     # Parameters for Dither_resize16
-    kernel_d = Default(kernel_d, "Spline36" )   
-    kernel_u = Default(kernel_u, "Spline64" )   # kernel of Dither_resize16 used in flat area upscaling
-    noring   = Default(noring,   False      )   # True use non-ringing algorithm of Dither_resize16 in flat area scaling
-                                                # *It actually doesn't make sense for eedi3_resize(which uses eedi3 for upscaling), *
-                                                # *while it'll produce blurring and aliasing when downscaling.                          *
-                                                # *You'd better not set it to True unless you know what you are doing.                  *
-    
+    kernel_d = Default(kernel_d, "Spline36" )
+    kernel_u = Default(kernel_u, "Spline64" )
+    noring   = Default(noring,   False      )
+
     
     # Post-Process
-    sharp    = Default(sharp,    0      )   # Strength of Contra-Sharpen mod, for sharper edge. 0 means no sharpening, common value is about 100.
-                                            # *Only* when {horrizontal or vertical}{scale ratio}>{ratiothr} will sharpening take effect.
-    
+    sharp    = Default(sharp,    0      )    
     
     # Parameters for input/output
     Y        = Default(Y,        3      )
     U        = Default(U,        3      )
     V        = Default(V,        3      )
-    lsb_in   = Default(lsb_in,   False  )   # input  clip is 16-bit stacked or not
-    lsb_out  = Default(lsb_out,  lsb_in  )   # output clip is 16-bit stacked or not
-    dither   = Default(dither,   6      )   # dither mode for conversion from 16-bit to 8-bit (same as "mode" in DitherPost)
+    lsb_in   = Default(lsb_in,   False  )
+    lsb_out  = Default(lsb_out,  lsb_in  )
+    dither   = Default(dither,   6      )
     
     sCSP     = input.eedi3_resize_GetCSP()
     Assert(sCSP.LuIsEq("Y8||YV12||YV16||YV24"), "eedi3_resize: only accept Y8, YV12, YV16, YV24 input")
     
     output   = Default(output,   sCSP   )
-    # Output format. Possible values are:
-    # "Y8"       : Regular Y8    colorspace. Parameter "lsb" works on this output mode.
-    # "YV12"     : Regular YV12  colorspace. Parameter "lsb" works on this output mode.
-    # "YV16"     : Regular YV16  colorspace. Parameter "lsb" works on this output mode.
-    # "YV24"     : Regular YV24  colorspace. Parameter "lsb" works on this output mode.
-    # "RGB32"    : Regular RGB32 colorspace.
-    # "RGB24"    : Regular RGB24 colorspace.
-    # "RGB48YV12": 48-bit RGB conveyed on YV12. Use it for rawvideo export only. Not suitable for display or further processing (it will look like garbage).
-    # "RGB48Y"   : 48-bit RGB. The components R, G and B are conveyed on three YV12 or Y8 (if supported) stack16 clips interleaved on a frame basis.
-    
+ 
     ProcY8     = sCSP == "Y8" || output == "Y8"
     sCSP     = ProcY8 ? "YV24" : sCSP
     OutRGB   = LuIsEq(output, "RGB||RGB24||RGB32||RGB48Y||RGB48YV12")    
@@ -133,36 +167,12 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     shc      = sCSP=="YV12" ? sh/2 : sh
     HD       = input.LuisHD()
     
-    matrix   = Default(matrix,   HD ? "709" : "601")
-    # The matrix used to convert the YUV pixels to computer RGB. Possible values are:
-    # "601"  : ITU-R BT.601 / ITU-R BT.470-2 / SMPTE 170M. For Standard Definition content.
-    # "709"  : ITU-R BT.709. For High Definition content.
-    # "240"  : SMPTE 240M
-    # "FCC"  : FCC
-    # "YCgCo": YCgCo
-    # When the parameter is not defined, ITU-R BT.601 and ITU-R BT.709 are automatically selected depending on the clip definition.
-    
-    curve    = Default(curve,    "linear"   )
-    # type of gamma mapping(transfer characteristic)
-    # possible values:
-    # "709"    - ITU-R BT.709 transfer curve for digital video
-    # "601"    - ITU-R BT.601 transfer curve, same as "709"
-    # "170"    - SMPTE 170M, same as "709"
-    # "240"    - SMPTE 240M (1987)
-    # "srgb"   - sRGB curve
-    # "2020"   - ITU-R BT.2020 transfer curve, for 12-bit content. For sources of lower bitdepth, use the "709" curve.
-    # "linear" - linear curve without gamma-aware processing
-    curve    = Yt ? curve : "linear"
-    gcor     = Default(gcor,     1.0    )   # Gamma correction, applied on the linear part.
-    
-    tv_range = Default(tv_range, True   )   # define source's level
-    
+    matrix   = Default(matrix, HD ? "709" : "601")
+    curve    = Yt ? Default(curve, "linear") : "linear"
+    gcor     = Default(gcor, 1.0)
+    tv_range = Default(tv_range, True   )
     cplace   = Default(cplace,   "MPEG2")
-    # Placement of the chroma subsamples. Can be one of these strings:
-    # "MPEG1": 4:2:0 subsampling used in MPEG-1. Chroma samples are located on the center of each group of 4 pixels.
-    # "MPEG2": Subsampling used in MPEG-2 4:2:x. Chroma samples are located on the left pixel column of the group.
-    
-    
+
     # Parameters for resizer
     ow       = Default(target_width,  sw)
     oh       = Default(target_height, sh)
@@ -235,7 +245,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     
     
     # Scale & Shift Calculation
-    ratiothr = Default(ratiothr,   1.125)    # When scale ratio is larger than ratiothr, use eedi3+Dither_resize16 upscale method instead of pure Dither_resize16.
+    ratiothr = Default(ratiothr,   1.125) 
     
     yhratio  = float(ow ) / float(src_width  )
     yvratio  = float(oh ) / float(src_height )
@@ -331,7 +341,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
                          \ : input
     
     if (lsb_in) {
-        input8 = input.Lu16To8(tv_range, Yt, Ut, Vt, -1)
+        input8 = input.Lu16To8(tv_range, Yt, Ut, Vt, mixed ? -1 : dither)
         input = (lsb) ? input : input8
     }
     else {
@@ -379,15 +389,15 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     {
         edgeY = (Ynnt) ? edgennY.LuResize(ow , oh , src_left *yhrf+yhfix, src_top *yvrf+yvfix, src_width *yhrf, tv_range=tv_range,
                                         \ src_height *yvrf, false, lsb, kernel=kernel_d, y=Y31, u=1, v=1, curve=curve, gcor=gcor)
-                     \ : input.LuBlankClip(width=ow, height=oh, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
+                     \ : input.LuBlankClip(w=ow, h=oh, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
            
     	edgeU   = (Unnt) ? edgennU.LuResize(owc, ohc, src_leftc*chrf+chfix+cphfixe, src_topc*cvrf+cvfix, tv_range=tv_range,
                                           \ src_widthc*chrf, src_heightc*cvrf, false, lsb, kernel=kernel_d, y=U31, u=1, v=1)
-                       \ : input.LuBlankClip(width=owc, height=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
+                       \ : input.LuBlankClip(w=owc, h=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
                        
     	edgeV   = (Vnnt) ? edgennV.LuResize(owc, ohc, src_leftc*chrf+chfix+cphfixe, src_topc*cvrf+cvfix, tv_range=tv_range,
                                           \ src_widthc*chrf, src_heightc*cvrf, false, lsb, kernel=kernel_d, y=V31, u=1, v=1)
-                       \ : input.LuBlankClip(width=owc, height=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
+                       \ : input.LuBlankClip(w=owc, h=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
     	
     	edge  = ProcY8 ? edgeY : YToUV(edgeU, edgeV, edgeY)
     }
