@@ -1,5 +1,5 @@
 /*
-HiAA v0.1
+HiAA v0.11
 ====================
 
 Antialiasing script that works both in 16-bit and 8-bit.
@@ -278,7 +278,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     {
         mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
         eedi3_resize(last, ee_ssw, ee_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
-        \              ee_threads, 1.0, 0, false, Undefined, Undefined, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
+        \              ee_threads, 1.0, 0, false, Undefined, 1.3, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
         \               y_aa, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
     }
     
