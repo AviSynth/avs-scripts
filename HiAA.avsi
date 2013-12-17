@@ -1,5 +1,5 @@
 /*
-HiAA v0.11
+HiAA v0.12
 ====================
 
 Antialiasing script that works both in 16-bit and 8-bit.
@@ -14,7 +14,7 @@ Requirements:
    * eedi3 v0.9.2 (Firesledge mod)
    * eedi3_resize v0.1
    * nnedi3 v0.9.4
-   * nnedi3_resize16 v3.0
+   * nnedi3_resize16 v3.1
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
    * Masktools v2.0b1
@@ -39,7 +39,12 @@ Input Formats:
 Parameters:
 
    + [string] aa (sangnom2)
-       *   Antiaaliasing method. Currently supported: eedi3, eedi3+sangnom2, sangnom2 
+       *   Antiaaliasing method. 
+       *   Currently supported: 7
+           *   eedi3
+           *   eedi3+sangnom2
+           *   nnedi3
+           *   sangnom2 
    + [string] ss (nnedi3)
        *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3 (tbd)
    + [float] ssf (1.0 for eedi3/eedi3+sangnom2; 2.0 for sangnom2)
@@ -59,8 +64,8 @@ Parameters:
        *   Specifying fmt_in is required for rgb48y and rgb48yv12
    + [int] dither (6)
        *   Dither mode for conversion from 16-bit to 8-bit (refer to dither docs for more information)
-   + [float] ee_fac (2.0)
-       *   Scaling factor for eedi3 interpolation.
+   + [float] e_fac (2.0)
+       *   Scaling factor for eedi3/nnedi3 interpolation (antialasing stage).
        *   Using anything other than multiples of two will incur an additional performance hit
    + [various] ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp
        *   Eedi3 parameters (refer to eedi3 docs for more information)
@@ -69,7 +74,7 @@ Parameters:
        *   Can be True/False or one of the following methods:
            *    "csmod" : contra sharpening (Default if set to true)
            *    "lsfmod" : LSFmod with configurable defaults and strength
-           *    "awarpsharp2" : aWarpSharp2 applied at supersampling resolution (ssf*ee_fac)
+           *    "awarpsharp2" : aWarpSharp2 applied at supersampling resolution (ssf*e_fac)
            *    "awarp4" : aWarpSharp2 applied at 4x source resolution 
            *    "msharpen" : MSharpen
    + [int] cs_strength (75)
@@ -122,21 +127,24 @@ Parameters:
 function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool "lsb_out", int "y", int "u", int "v", string "fmt_in", string "fmt_out", int "dither",
 \            string "kernel_d", bool "noring", string "matrix", bool "tv_range", string "cplace",
 \            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", bool "show", int "threads",
-\            float "ee_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
+\            float "e_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
 \            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
 \            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", int "lsf_strength", string "lsf_defaults", 
 \            int "ms_threshold", int "ms_strength")
 {
-    aa_lst = "eedi3||eedi3+sangnom2||sangnom2"
+    aa_lst = "eedi3||eedi3+sangnom2||nnedi3||sangnom2"
     rsz_lst = "bicubic||catmull-rom||hermite||mitchell-netravali||robidoux||softcubic||blackman||lanczos||lanczos4||sinc||" 
            \ +"blackmanminlobe||box||rect||spline||spline144||spline16||spline36||spline64||bilinear||point"
-    ss_lst = "nnedi3"
+    ss_lst = rsz_lst + "||nnedi3"
     
     aa = Default(aa, "sangnom2")
     ss = Default(ss, "nnedi3")
     kernel_d = Default(kernel_d, "Spline36")
-    ssf = Default(ssf, Select(LuIsEq(aa, aa_lst, true), 1.0, 1.0, 2.0))
-    ee_fac = Default(ee_fac, 2.0)
+    
+    Assert(aa.LuIsEq(aa_lst), "HiAA: unsupported antialiasing method '" + aa + "'.")
+    
+    ssf = Default(ssf, Select(LuIsEq(aa, aa_lst, true), 1.0, 1.0, 1.0, 2.0))
+    e_fac = Default(e_fac, 2.0)
     fmt_in = Default(fmt_in, c.PixelType)
     fmt_out = Default(fmt_out, fmt_in)
     lsb_in = FmtIsRGB(fmt_in) ? false : Default(lsb_in, false)
@@ -158,15 +166,15 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     v_lg = (v == 3) ? 4 : v
     mthr = Default(mthr, 30)
     proc_chroma = u==3 || v==3
-    ee_fmt_out = (!proc_chroma) ? "Y8" : FmtIsYUV(fmt_out) ? fmt_out : "YV24"
+    e_fmt_out = (!proc_chroma) ? "Y8" : FmtIsYUV(fmt_out) ? fmt_out : "YV24"
     noring = Default(noring, false) # Todo: make noring a val and make it work like in Resize8, write wrapper for dither_resize16
 
     sw = c.Width
     sh = (lsb_in) ? c.Height/2 : c.Height
     ssw = int(round(sw*ssf/4.0)*4)
     ssh = int(round(sh*ssf/4.0)*4) 
-    ee_ssw = int(round(ssw*ee_fac/4.0)*4)
-    ee_ssh = int(round(ssh*ee_fac/4.0)*4)
+    e_ssw = int(round(ssw*e_fac/4.0)*4)
+    e_ssh = int(round(ssh*e_fac/4.0)*4)
     
     Assert(ssf > 0, "HiAA: Supersampling factor must be > 0")
     Assert(!((FmtIsYUV(fmt_in) || fmt_in=="RGB48YV12" || fmt_in=="RGB48Y") && c.IsRGB),
@@ -258,14 +266,15 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
    # ss
    if (ssf != 1.0)
    {
-       (ss == "nnedi3") ? c_yuvp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, Undefined, false, nn_nsize, nn_nns, 
-                                               \ nn_qual, nn_etype, nn_pscrn, nn_threads, 1.0, 0, false, Undefined, 
-                                               \ Undefined, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace, 
-                                               \ y_aa, u_aa, v_aa, lsb_in, lsb, dither)
-   \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring, 
-                                            \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
-   \ : Assert(false, "HiAA: unsupported supersampling method '" + ss + "'.")
-   mclip_ss = Defined(mclip) ? mclip.BilinearResize(ssw, ssh) : nop()
+         (ss == "nnedi3") ? c_yuvp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns,
+                                                 \ qual=nn_qual, etype=nn_etype, pscrn = nn_pscrn, threads=nn_threads, ratiothr=1.125,
+                                                 \ mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
+                                                 \ y=y_aa, u=u_aa, v=v_aa, lsb_in=lsb_in, lsb=lsb, dither=dither)
+     \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring,
+                                             \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
+     \ : Assert(false, "HiAA: unsupported supersampling method '" + ss + "'.")
+
+       mclip_ss = Defined(mclip) ? mclip.BilinearResize(ssw, ssh) : nop()
    }
    else
    {
@@ -273,13 +282,20 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
         c_yuvp
    }
                                  
-    # eedi3 aa
+    # eedi3/nnedi3 aa
     if(LuIsEq(aa, "eedi3||eedi3+sangnom2"))
     {
         mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
-        eedi3_resize(last, ee_ssw, ee_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
-        \              ee_threads, 1.0, 0, false, Undefined, 1.3, ee_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
+        eedi3_resize(last, e_ssw, e_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
+        \              ee_threads, 1.0, 0, false, Undefined, 1.3, e_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
         \               y_aa, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
+    }
+    else if (LuIsEq(aa, "nnedi3"))
+    {
+        nnedi3_resize16(last, e_ssw, e_ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns, 
+                      \ qual=nn_qual, etype=nn_etype, pscrn=nn_pscrn, threads=nn_threads, ratiothr=1.0, mixed=false,
+                      \ output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace, 
+                      \ y=y_aa, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb=lsb, dither=dither)
     }
     
     # 8 bit processing
