@@ -79,6 +79,9 @@ Parameters:
            *    "msharpen" : MSharpen
    + [int] cs_strength (75)
        *   Contra sharpening strength
+   + [bool] cs_limit (true)
+       *   Limits contra sharpening to the supersampled source clip
+       *   Enable this if you want the output to be no sharper than the source
    + [int] aw_thresh, aw_blur, aw_depth (4 for awarpsharp2; 2 for awarp4)
        *   Parameters passed to aWarpSharp2 (refer to awarpsharp2 docs for more information)
    + [various] lsf_strength (60), lsf_defaults (fast)
@@ -129,7 +132,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
 \            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", bool "show", int "threads",
 \            float "e_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
 \            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
-\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", int "lsf_strength", string "lsf_defaults", 
+\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", bool "cs_limit", int "lsf_strength", string "lsf_defaults", 
 \            int "ms_threshold", int "ms_strength")
 {
     aa_lst = "eedi3||eedi3+sangnom2||nnedi3||sangnom2"
@@ -266,21 +269,20 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
    # ss
    if (ssf != 1.0)
    {
-         (ss == "nnedi3") ? c_yuvp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns,
-                                                 \ qual=nn_qual, etype=nn_etype, pscrn = nn_pscrn, threads=nn_threads, ratiothr=1.125,
-                                                 \ mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
-                                                 \ y=y_aa, u=u_aa, v=v_aa, lsb_in=lsb_in, lsb=lsb, dither=dither)
+     c_yuvp = (ss == "nnedi3") ? c_yuvp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns,
+                                                      \ qual=nn_qual, etype=nn_etype, pscrn = nn_pscrn, threads=nn_threads, ratiothr=1.125,
+                                                      \ mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
+                                                      \ y=y_aa, u=u_aa, v=v_aa, lsb_in=lsb_in, lsb=lsb, dither=dither)
      \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring,
-                                             \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
+                                              \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
      \ : Assert(false, "HiAA: unsupported supersampling method '" + ss + "'.")
 
        mclip_ss = Defined(mclip) ? mclip.BilinearResize(ssw, ssh) : nop()
+       
    }
-   else
-   {
-        mclip_ss = mclip
-        c_yuvp
-   }
+   else { mclip_ss = mclip }
+   
+   c_yuvp
                                  
     # eedi3/nnedi3 aa
     if(LuIsEq(aa, "eedi3||eedi3+sangnom2"))
@@ -321,9 +323,13 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     if (sharp_b)
     {
         if (sharp_s=="csmod") {
-            ConvertToYV12()
-            CSmod(edgemode=0, chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, 
-                \ Smethod=1, kernel=6, strength=cs_strength, Soothe=-1)
+            cs_limit = Default(cs_limit, true)
+            c_yuvp = (cs_limit && aa.LuIsEq("eedi3||eedi3+sangnom2||nnedi3")) ? 
+                 \   c_yuvp.LUResize(e_ssw, e_ssh, 0, 0, sw, sh, lsb, false, false, "Spline36", matrix, tv_range, noring=noring,
+                                   \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa).ConvertToYV12()
+                 \ : c_yuvp
+            ConvertToYV12().CSmod(cs_limit?c_yuvp:Undefined(), edgemode=0, chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, 
+                \ Smethod=1, kernel=6, strength=cs_strength, Soothe=-1, limit=cs_limit)
         }
         else if (sharp_s=="awarpsharp2") {
             aw_depth = Default(aw_depth, 4)
