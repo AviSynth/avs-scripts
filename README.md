@@ -21,7 +21,7 @@ Requirements:
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
    * Masktools 2.0a48tp7fix5
-   * LUtils v0.1
+   * LUtils v0.11
 
 Input Formats: Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
 
@@ -101,7 +101,7 @@ HiAA
 Antialiasing script that works both in 16-bit and 8-bit.
 Supports multiple antialiasing and supersampling methods (sangnom2, eedi3, nnedi3, resize kernels), masking and sharpening.
 
-Script version: 0.11
+Script version: 0.13
 **WIP - everything subject to change without notice**
 
 Requirements:
@@ -109,13 +109,13 @@ Requirements:
    * AviSynth+ r1555
    * Dither v1.24.0
    * eedi3 v0.9.2 (Firesledge mod)
-   * eedi3_resize v0.1
+   * eedi3_resize v0.11
    * nnedi3 v0.9.4
-   * nnedi3_resize16 v3.0
+   * nnedi3_resize16 v3.1
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
    * Masktools v2.0b1
-   * LUtils v0.1
+   * LUtils v0.11
    * Resize8 v1.1
    * RgTools v0.91
    * tmaskcleaner v0.9
@@ -136,11 +136,21 @@ Input Formats:
 Parameters:
 
    + [string] aa (sangnom2)
-       *   Antiaaliasing method. Currently supported: eedi3, eedi3+sangnom2, sangnom2 
+       *   Antiaaliasing method.
+       *   Currently supported:
+           *   eedi3
+           *   eedi3+sangnom2
+           *   nnedi3
+           *   sangnom2        
    + [string] ss (nnedi3)
-       *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3 (tbd)
+       *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3
    + [float] ssf (1.0 for eedi3/eedi3+sangnom2; 2.0 for sangnom2)
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
+   + [val] preaa (false)
+       *   Enables daa type pre-pass antialiasing, which uses nnedi3 to interpolate from the 2 source fields 
+           and averages the 2 resulting frames. Causes significant blurring, so only use it on particularly
+           bad sources where lines won't connect otherwise (e.g. due to bad Deinterlacing/IVTC)
+       *   Will be run in both directions if set to true. Set it to "hor" or "ver" to only preaa in one direction
    + [bool] lsb_in (false), lsb_out (lsb_in)
        *   Tells the script whether the input clips are 16-bit stacked or 8 bit
        *   Setting either of these parameters to true will enable lsb processing (which results in a speed hit)
@@ -171,6 +181,14 @@ Parameters:
            *    "msharpen" : MSharpen
    + [int] cs_strength (75)
        *   Contra sharpening strength
+   + [val] cs_limit (true)
+       *   Limits contra sharpening to either:
+           *    "ss" : the supersampled (see ss) and preprocessed (see preaa) source clip
+           *    "src" : the source clip, seperately supersample with the Spline36 kernel
+       *   Enable this if you want the output to be no sharper than the source
+       *   If set to true, "src" will be used if preaa is enabled, otherwise "ss"
+           *    You might want to override this on terribly aliased sources in case
+                the contra sharpening reintroduces some of the aliasing
    + [int] aw_thresh, aw_blur, aw_depth (4 for awarpsharp2; 2 for awarp4)
        *   Parameters passed to aWarpSharp2 (refer to awarpsharp2 docs for more information)
    + [various] lsf_strength (60), lsf_defaults (fast)
@@ -221,7 +239,7 @@ LUtils
 A collection of helper and wrapper functions meant to help script authors in handling common operations (especially 8/16-bit processing) and shortcomings of the avs scripting language without having to write the same boilerplate over and over again. 
 Most of these functions require AviSynth+
 
-Script version: 0.1
+Script version: 0.11
 
 Function list:
 
@@ -229,10 +247,12 @@ Function list:
    * Lu8To16
    * LuBlankClip
    * LuConvCSP 
+   * LuEdi
    * LUIsDefined
    * LuIsEq
    * LuIsFunction
    * LuIsHD
+   * LuIsSameRes
    * LuLimitDif
    * LuLut
    * LuMatchCSP
