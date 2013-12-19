@@ -1,4 +1,4 @@
-# Lazy Utilities v0.1
+# Lazy Utilities v0.11
 # too lazy to write a readme
 
 function LuStackedNto16(clip c, int n)
@@ -579,4 +579,80 @@ function LuBlankClip(clip c, int "length", int "w", int "h", string "pixel_type"
     h = (lsb_in) ? h*2 : h
     
     return c.BlankClip(length, w, h, pixel_type, fps, fps_denominator, color=color, color_yuv=color_yuv)
+}
+
+# todo: add nnedi/eedi parameters maybe
+function LuEdi(clip c, string type, bool "ver", bool "hor", int "field", bool "avgfields", 
+             \ int "y", int "u", int "v", bool "lsb", bool "tv_range")
+{
+    y = Default(y, 3)
+    u = Default(u, 2)
+    v = Default(v, u)
+    lsb = Default(lsb, false)
+    ver = Default(ver, true)
+    hor = Default(hor, false)
+    avgfields = Default(avgfields, false)
+    yb = y>=3
+    ub = u>=3
+    vb = v>=3
+    
+    c8 = lsb ? c.Lu16To8(tv_range, yb, ub, vb, -1) : c
+    
+    plane_list = yb || (c.PixelType == "YV12" && (ub||vb)) ?"y,":""
+    plane_list = plane_list + (LuIsEq(c.PixelType, "YV16||YV24") ? (ub?"u,":"") + (vb?"v,":"") : "")
+    
+    sblock = """
+        hor_<PLANE> = hor
+        if (current_plane.LuIsEq("u||v")) {
+            c8.<PLANE>toY().ConvertToYV12()
+            xb = false
+        } else {
+            c8.ConvertToYV12()
+            xb = true 
+        }
+       
+        if (!(((ver?1:0)+(hor?1:0))==0)) #temporary hack until loops in avs+ are fixed
+        {
+        for (cnt=(ver?1:0)+(hor?1:0), 1, -1)
+        {
+            hor_<PLANE> ? TurnLeft() : nop()    
+              (type == "nnedi3") ? nnedi3(field, false, yb||!xb, ub&&xb, vb&&xb) :
+            \ (type == "nnedi2") ? nnedi2(field, false, yb||!xb, ub&&xb, vb&&xb) :
+            \ (type == "eedi3") ? eedi3(field, false, yb||!xb, ub&&xb, vb&&xb) :
+            \ Assert(false, "LuEdi: unsupported edi type")
+            
+            avgfields ? mt_average(SelectEven(), SelectOdd(), yb||!xb?3:1, ub&&xb?3:1, vb&&xb?3:1) : nop()
+            hor_<PLANE> ? TurnRight() : nop()
+            hor_<PLANE> = false
+        }
+        }
+        c8_<PLANE> = last
+    """        
+
+    for(i=0, LuSubstrCnt(plane_list)-1)
+    {
+        current_plane = LuSubstrAtIdx(plane_list, i)
+        eval(LuReplaceStr(sblock, "<PLANE>", LuSubstrAtIdx(plane_list, i)))
+    }
+    
+    LuIsEq(c.PixelType, "YV16||YV24") && (ub || vb) ? YtoUV(ub?c8_u:c8.UtoY8(), vb?c8_v:c8.VtoY8(),yb?c8_y:c8) : c8_y.LuMatchCSP(c8)
+    
+    if (lsb) {
+    Lu8To16(tv_range, y>=3, u>=3, v>=3)
+    c.Dither_limit_dif16 (last, thr=1.0, elast=2.0)
+    }
+    
+    return c.mt_logic(last, "and", y=y>=3?4:y, u=u>=3?4:u, v=v>=3?4:v)
+}
+
+function LuIsSameRes(clip c1, clip c2, bool "lsb1", bool "lsb2")
+{
+    lsb1 = Default(lsb1, false)
+    lsb2 = Default(lsb2, false)
+    w1 = c1.Width
+    w2 = c2.Width
+    h1 = lsb1 ? c1.Height/2 : c1.Height
+    h2 = lsb2 ? c2.Height/2 : c2.Height
+    
+    return w1==w2 && h1==h2
 }
