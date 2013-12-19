@@ -1,5 +1,5 @@
 /*
-HiAA v0.12
+HiAA v0.13
 ====================
 
 Antialiasing script that works both in 16-bit and 8-bit.
@@ -49,6 +49,11 @@ Parameters:
        *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3 (tbd)
    + [float] ssf (1.0 for eedi3/eedi3+sangnom2; 2.0 for sangnom2)
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
+   + [val] preaa (false)
+       *   Enables daa type pre-pass antialiasing, which uses nnedi3 to interpolate from the 2 source fields 
+           and averages the 2 resulting frames. Causes significant blurring, so only use it on particularly
+           bad sources where lines won't connect otherwise (e.g. due to bad Deinterlacing/IVTC)
+       *   Will be run in both directions if set to true. Set it to "hor" or "ver" to only preaa in one direction
    + [bool] lsb_in (false), lsb_out (lsb_in)
        *   Tells the script whether the input clips are 16-bit stacked or 8 bit
        *   Setting either of these parameters to true will enable lsb processing (which results in a speed hit)
@@ -79,9 +84,14 @@ Parameters:
            *    "msharpen" : MSharpen
    + [int] cs_strength (75)
        *   Contra sharpening strength
-   + [bool] cs_limit (true)
-       *   Limits contra sharpening to the supersampled source clip
+   + [val] cs_limit (true)
+       *   Limits contra sharpening to either:
+           *    "ss" : the supersampled (see ss) and preprocessed (see preaa) source clip
+           *    "src" : the source clip, seperately supersample with the Spline36 kernel
        *   Enable this if you want the output to be no sharper than the source
+       *   If set to true, "src" will be used if preaa is enabled, otherwise "ss"
+           *    You might want to override this on terribly aliased sources in case
+                the contra sharpening reintroduces some of the aliasing
    + [int] aw_thresh, aw_blur, aw_depth (4 for awarpsharp2; 2 for awarp4)
        *   Parameters passed to aWarpSharp2 (refer to awarpsharp2 docs for more information)
    + [various] lsf_strength (60), lsf_defaults (fast)
@@ -129,10 +139,10 @@ Parameters:
 
 function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool "lsb_out", int "y", int "u", int "v", string "fmt_in", string "fmt_out", int "dither",
 \            string "kernel_d", bool "noring", string "matrix", bool "tv_range", string "cplace",
-\            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", bool "show", int "threads",
+\            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", val "preaa", bool "show", int "threads",
 \            float "e_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
 \            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
-\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", bool "cs_limit", int "lsf_strength", string "lsf_defaults", 
+\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", val "cs_limit", int "lsf_strength", string "lsf_defaults", 
 \            int "ms_threshold", int "ms_strength")
 {
     aa_lst = "eedi3||eedi3+sangnom2||nnedi3||sangnom2"
@@ -209,6 +219,17 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     soothe_b = IsBool(soothe) ? soothe : IsInt(soothe) ? true : false
     soothe_i = IsInt(soothe) ? soothe : (soothe_b) ? 25 : Undefined
     
+    Assert(IsString(preaa) && LuIsEq(preaa, "hor||ver") || IsBool(preaa) || !Defined(preaa),
+         \ "HiAA: preaa must be either True/False or hor/ver") 
+    preaa_h = Defined(preaa) ? IsBool(preaa) ? (preaa)?true:false : (preaa=="hor")?true:false : false
+    preaa_v = Defined(preaa) ? IsBool(preaa) ? (preaa)?true:false : (preaa=="ver")?true:false : false
+
+    Assert(IsString(cs_limit) && LuIsEq(cs_limit, "src||ss") || IsBool(cs_limit) || !Defined(cs_limit),
+         \ "HiAA: cs_limit must be either True/False or ss/src") 
+    cs_limit_b = IsBool(cs_limit) ? cs_limit :  IsString(cs_limit) ? true : false
+    cs_limit_s= IsString(cs_limit) ? cs_limit: (cs_limit_b) ? (preaa_h || preaa_v) ? "src" : "ss" : Undefined
+
+
     # number of threads
     # todo: optimize
     #~ tfac = min((sa_aa)?1:0 + aa.LuisEq("eedi3||eedi3+sangnom2")?1:0 + (ss=="nnedi3")?1:0, 1)
@@ -234,10 +255,21 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     }
     
     c_yuvp = (proc_chroma) ? c_yuv : c_yuv.ConvertToY8()
+    c_yuv8 = (lsb_in) ? c_yuv.DitherPost(mode=-1) : c_yuv
+    
+    # determine lsb processing
+    lsb = lsb_in || lsb_out
+    
+    # preaa
+    if(preaa_h || preaa_v)
+    {
+        c_yuv8 = c_yuv8.LuEdi("nnedi3", preaa_v, preaa_h, -2, true, y_aa, u_aa, v_aa, false)
+        c_yuvpp = lsb_in ? c_yuvp.Dither_limit_dif16(c_yuv8.LuMatchCSP(c_yuvp).Lu8To16(tv_range, y_aa==3, u_aa==3, v_aa==3), 
+                                                  \ thr=1.0, elast=2.0) : c_yuv8
+    } else { c_yuvpp = c_yuvp }
     
     # Mask
     if (!Defined(mclip) && mask_b) {
-       c_yuv8 = (lsb_in) ? c_yuv.DitherPost(mode=-1) : c_yuv
     
        if(mask_s == "simple") {
             mclip = c_yuv8.mt_edge("prewitt", mthr, mthr, mthr/2, mthr/2, y_msk, u_msk, v_msk).RemoveGrain(17)
@@ -263,17 +295,15 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     if (show) {
         return c_yuv8.mt_merge(c_yuv8.mt_lut(y=2, u=0, v=0), mclip, u=3, v=3, luma=true)
     }
-    # determine lsb processing
-    lsb = lsb_in || lsb_out
     
    # ss
    if (ssf != 1.0)
    {
-     c_yuvp = (ss == "nnedi3") ? c_yuvp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns,
+     c_yuvpp = (ss == "nnedi3") ? c_yuvpp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns,
                                                       \ qual=nn_qual, etype=nn_etype, pscrn = nn_pscrn, threads=nn_threads, ratiothr=1.125,
                                                       \ mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
                                                       \ y=y_aa, u=u_aa, v=v_aa, lsb_in=lsb_in, lsb=lsb, dither=dither)
-     \ : (ss.LuIsEq(rsz_lst)) ? c_yuvp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring,
+     \ : (ss.LuIsEq(rsz_lst)) ? c_yuvpp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring,
                                               \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
      \ : Assert(false, "HiAA: unsupported supersampling method '" + ss + "'.")
 
@@ -282,7 +312,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
    }
    else { mclip_ss = mclip }
    
-   c_yuvp
+   c_yuvpp
                                  
     # eedi3/nnedi3 aa
     if(LuIsEq(aa, "eedi3||eedi3+sangnom2"))
@@ -299,7 +329,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
                       \ output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace, 
                       \ y=y_aa, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb=lsb, dither=dither)
     }
-    
+
     # 8 bit processing
     if (sa_aa || sharp_b)
     {
@@ -323,13 +353,17 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     if (sharp_b)
     {
         if (sharp_s=="csmod") {
-            cs_limit = Default(cs_limit, true)
-            c_yuvp = (cs_limit && aa.LuIsEq("eedi3||eedi3+sangnom2||nnedi3")) ? 
-                 \   c_yuvp.LUResize(e_ssw, e_ssh, 0, 0, sw, sh, lsb, false, false, "Spline36", matrix, tv_range, noring=noring,
-                                   \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa).ConvertToYV12()
-                 \ : c_yuvp
-            ConvertToYV12().CSmod(cs_limit?c_yuvp:Undefined(), edgemode=0, chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, 
-                \ Smethod=1, kernel=6, strength=cs_strength, Soothe=-1, limit=cs_limit)
+            if (cs_limit_b)
+            {
+                c_yuvcs = (cs_limit_s=="src") ? c_yuvp : c_yuvpp
+                c_yuvcs_lsb = (cs_limit_s=="src") ? lsb_in : lsb
+                c_yuvcs = !LuIsSameRes(last, c_yuvcs, false, c_yuvcs_lsb) ? 
+                        \ c_yuvcs.LUResize(last.Width, last.Height, 0, 0, sw, sh, c_yuvcs_lsb, false, false, "Spline36", matrix, 
+                                         \ tv_range, noring=noring, cplace=cplace, y=y_aa, u=u_aa, v=v_aa)
+                     \ : c_yuvcs_lsb ? c_yuvcs.DitherPost(mode=-1) : c_yuvcs
+            }
+            ConvertToYV12().CSmod(cs_limit_b?c_yuvcs.ConvertToYV12():Undefined(), edgemode=0, chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, 
+                \ Smethod=1, kernel=6, strength=cs_strength, Soothe=-1, limit=cs_limit_b)
         }
         else if (sharp_s=="awarpsharp2") {
             aw_depth = Default(aw_depth, 4)
