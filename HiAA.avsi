@@ -12,13 +12,13 @@ Requirements:
    * AviSynth+ r1555
    * Dither v1.24.0
    * eedi3 v0.9.2 (Firesledge mod)
-   * eedi3_resize v0.1
+   * eedi3_resize v0.11
    * nnedi3 v0.9.4
    * nnedi3_resize16 v3.1
    * Contra-Sharpen mod v3.4
    * SmoothAdjust v2.90
    * Masktools v2.0b1
-   * LUtils v0.1
+   * LUtils v0.11
    * Resize8 v1.1
    * RgTools v0.91
    * tmaskcleaner v0.9
@@ -40,13 +40,13 @@ Parameters:
 
    + [string] aa (sangnom2)
        *   Antiaaliasing method. 
-       *   Currently supported: 7
+       *   Currently supported:
            *   eedi3
            *   eedi3+sangnom2
            *   nnedi3
            *   sangnom2 
    + [string] ss (nnedi3)
-       *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3 (tbd)
+       *   Supersampling method. Currently supported: all the AVS+/Dither resizing kernels, nnedi3
    + [float] ssf (1.0 for eedi3/eedi3+sangnom2; 2.0 for sangnom2)
        *   Supersampling factor. Increase this to combat artifacts or excessive blurring.
    + [val] preaa (false)
