@@ -1,5 +1,5 @@
 /*
-HiAA v0.13
+HiAA v0.14
 ====================
 
 Antialiasing script that works both in 16-bit and 8-bit.
@@ -324,7 +324,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     }
     else if (LuIsEq(aa, "nnedi3"))
     {
-        nnedi3_resize16(last, e_ssw, e_ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns, 
+        nnedi3_resize16(last, e_ssw, e_ssh, 0, 0, Undefined, Undefined, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns, 
                       \ qual=nn_qual, etype=nn_etype, pscrn=nn_pscrn, threads=nn_threads, ratiothr=1.0, mixed=false,
                       \ output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace, 
                       \ y=y_aa, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb=lsb, dither=dither)
