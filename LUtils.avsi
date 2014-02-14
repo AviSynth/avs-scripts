@@ -1,4 +1,4 @@
-# Lazy Utilities v0.11
+# Lazy Utilities v0.12
 # too lazy to write a readme
 
 function LuStackedNto16(clip c, int n)
@@ -21,7 +21,7 @@ function LuPlanarToStacked(clip c, int "in_depth")
     msb = SelectOdd()
 
     StackVertical(msb, lsb)
-    return Defined(in_depth) ? StackedNto16(in_depth) : last
+    return Defined(in_depth) ? LuStackedNto16(in_depth) : last
 }
 
 function LuRGB48YV12ToRGB48Y(clip c)
@@ -75,8 +75,9 @@ function LuIsFunction(string func)
     return !error
 }
 
-function LuSeparateColumns(int "n")
+function LuSeparateColumns(clip c, int "n")
 {
+    c
     vers = VersionNumber()
     tPref = LuIsFunction("FTurnLeft") ? "F" : ""
     n = Default(n, 2)
