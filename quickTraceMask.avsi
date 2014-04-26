@@ -24,7 +24,7 @@ function quickTraceMask(clip c, string "colors", int "tolerance", int "lumalow",
     
     usecolor ? useluma ? mt_logic(cmask, lmask, mode) : cmask : lmask
     if(expand > 0) {mt_expand_multi(sw=expand, sh=expand)}
-    else if(expand < 0) {mt_inpand_multi(sw=-expand, sh=-inpand)}
+    else if(expand < 0) {mt_inpand_multi(sw=-expand, sh=-expand)}
     if(postexpand > 0) {mt_expand_multi(sw=postexpand, sh=postexpand)}
     else if(postexpand < 0) {mt_inpand_multi(sw=-postexpand, sh=-postexpand)}
     if(ss != 1.0) { Spline36Resize(sw, sh) }
