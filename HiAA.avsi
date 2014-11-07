@@ -129,7 +129,7 @@ Parameters:
    + [bool] show (false)
       *   If enabled, visualizes the mask instead of running the antialiasing
       *   Useful for tweaking mask and mthr
-   + [bool/int] sa_aa (true for aa methods that include sangnom, otherwise false) sa_aac (false)  
+   + [bool/int] sa_aa (true for aa methods that include sangnom, otherwise false) sa_aac (true if processing for any chroma plan is enabled)  
       *   Enables/Disables Sangnom2 based antialiasing on the luma and chroma channels
       *   Enabled if the supplied is an integer, which will be passed on as aa/aac parameters to Sangnom2 
    + [int] threads
@@ -142,7 +142,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
 \            val "mask", clip "mclip", int "mthr", val "sharp", val "soothe", val "preaa", bool "show", int "threads",
 \            float "e_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
 \            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
-\            int "aw_thresh", int "aw_blur", int "aw_depth", int "cs_strength", val "cs_limit", int "lsf_strength", string "lsf_defaults", 
+\            int "aw_thresh", int "aw_blur", int "aw_depth", int "aw_chroma", int "cs_strength", val "cs_limit", int "lsf_strength", string "lsf_defaults", 
 \            int "ms_threshold", int "ms_strength")
 {
     aa_lst = "eedi3||eedi3+sangnom2||nnedi3||sangnom2"
@@ -168,17 +168,22 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     y = Default(y, 3)
     u = Default(u, 2)
     v = Default(v, U)
-    y_aa = y.LuIsEq("3||4") ? 3 : 1 
+    proc_chroma = u.LuIsEq("3||4")|| v.LuIsEq("3||4")
+    proc_luma = y.LuIsEq("3||4")
+    aw_chroma = sharp.LuIsEq("awarpsharp2||awarp4") ? Default(aw_chroma, proc_luma ? proc_chroma?4:1 : 6) : 1
+    y_aa = proc_luma ? 3 : aw_chroma.LuIsEq("4||6")? 2:1 
     u_aa = u.LuIsEq("3||4") && (!c.IsY8 || FmtIsRGB(fmt_in)) ? 3 : 1
     v_aa = v.LuIsEq("3||4") && (!c.IsY8 || FmtIsRGB(fmt_in)) ? 3 : 1
-    y_msk = (y==3) ? 3 : 1
+    # when resizing we must also resize the copied y plane (for awarpsharp purposes), otherwise it won't be aligned
+    y_ss = aw_chroma.LuIsEq("4||6") ? 3 : y_aa
+    y_msk = (y==3) ? 3 : aw_chroma.LuIsEq("4||6")? 2:1 
     u_msk = (u==3 && u_aa==3) ? 3 : 1
     v_msk = (v==3 && v_aa==3) ? 3 : 1   
     y_lg = (y == 3) ? 4 : y
     u_lg = (u == 3) ? 4 : u
     v_lg = (v == 3) ? 4 : v
     mthr = Default(mthr, 30)
-    proc_chroma = u==3 || v==3
+    sa_aac = Default(sa_aac, proc_chroma)
     e_fmt_out = (!proc_chroma) ? "Y8" : FmtIsYUV(fmt_out) ? fmt_out : "YV24"
     noring = Default(noring, false) # Todo: make noring a val and make it work like in Resize8, write wrapper for dither_resize16
 
@@ -267,7 +272,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
         c_yuvpp = lsb_in ? c_yuvp.Dither_limit_dif16(c_yuv8.LuMatchCSP(c_yuvp).Lu8To16(tv_range, y_aa==3, u_aa==3, v_aa==3), 
                                                   \ thr=1.0, elast=2.0) : c_yuv8
     } else { c_yuvpp = c_yuvp }
-    
+
     # Mask
     if (!Defined(mclip) && mask_b) {
     
@@ -291,6 +296,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
        }
        else { Assert(false, "HiAA: no mask preset with name '" + String(mask_s) + "' found.") }
     }
+    
     # Mask preview
     if (show) {
         return c_yuv8.mt_merge(c_yuv8.mt_lut(y=2, u=0, v=0), mclip, u=3, v=3, luma=true)
@@ -302,34 +308,34 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
      c_yuvpp = (ss == "nnedi3") ? c_yuvpp.nnedi3_resize16(ssw, ssh, 0, 0, sw, sh, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns,
                                                       \ qual=nn_qual, etype=nn_etype, pscrn = nn_pscrn, threads=nn_threads, ratiothr=1.125,
                                                       \ mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
-                                                      \ y=y_aa, u=u_aa, v=v_aa, lsb_in=lsb_in, lsb=lsb, dither=dither)
+                                                      \ y=y_ss, u=u_aa, v=v_aa, lsb_in=lsb_in, lsb=lsb, dither=dither)
      \ : (ss.LuIsEq(rsz_lst)) ? c_yuvpp.LUResize(ssw, ssh, 0, 0, sw, sh, lsb_in, lsb, lsb, ss, matrix, tv_range, noring=noring,
-                                              \ cplace=cplace, y=y_aa, u=u_aa, v=v_aa, dither_mode=dither)
+                                              \ cplace=cplace, y=y_ss, u=u_aa, v=v_aa, dither_mode=dither)
      \ : Assert(false, "HiAA: unsupported supersampling method '" + ss + "'.")
 
        mclip_ss = Defined(mclip) ? mclip.BilinearResize(ssw, ssh) : nop()
        
    }
    else { mclip_ss = mclip }
-   
+
    c_yuvpp
                                  
     # eedi3/nnedi3 aa
     if(LuIsEq(aa, "eedi3||eedi3+sangnom2"))
     {
-        mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
+        # why were we doing this again?
+        #mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
         eedi3_resize(last, e_ssw, e_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
         \              ee_threads, 1.0, 0, false, Undefined, 1.3, e_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
-        \               y_aa, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
+        \               y_ss, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
     }
     else if (LuIsEq(aa, "nnedi3"))
     {
         nnedi3_resize16(last, e_ssw, e_ssh, 0, 0, Undefined, Undefined, kernel_d, noring=false, nsize=nn_nsize, nns=nn_nns, 
                       \ qual=nn_qual, etype=nn_etype, pscrn=nn_pscrn, threads=nn_threads, ratiothr=1.0, mixed=false,
                       \ output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace, 
-                      \ y=y_aa, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb=lsb, dither=dither)
+                      \ y=y_ss, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb=lsb, dither=dither)
     }
-
     # 8 bit processing
     if (sa_aa || sharp_b)
     {
@@ -368,7 +374,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
         else if (sharp_s=="awarpsharp2") {
             aw_depth = Default(aw_depth, 4)
             #~ u_w = (proc_chroma) ? 3 : (sa_aac_b) ? 2 : 1
-            ConvertToYV12().aWarpSharp2(aw_thresh, aw_blur, Undefined, aw_depth, chroma=1)
+            ConvertToYV12().aWarpSharp2(aw_thresh, aw_blur, Undefined, aw_depth, chroma=aw_chroma)
         }
         else if (sharp_s=="awarp4") {
             aw_depth = Default(aw_depth, 2)
@@ -378,7 +384,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
             c16 = c16.LUResize(sw, sh, lsb_in=lsb, cplace=cplace, tv_range=tv_range)
             # todo: fix inaccurate shift
             aWarp4(Resize8(sw*4, sh*4, 0.375*(width/sw), 0.375*(height/sh), kernel="Spline36", u=false, v=false),
-                 \ s_yxx8.ConvertToYV12().aSobel(aw_thresh,1).aBlur(aw_blur, 1, 1), aw_depth, 1)
+                 \ s_yxx8.ConvertToYV12().aSobel(aw_thresh,1).aBlur(aw_blur, 1, 1), aw_depth, 1, chroma=aw_chroma)
         }
         else if (sharp_s=="lsfmod") {
             ConvertToYV12()
@@ -398,12 +404,14 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     # back to 16 bit
     if (sa_aa || sharp_b)
     {
-        (sa_aac_b) ? last.MergeChroma(s_yxx8) : last
-        u_s = (sa_aac_b) ? 3 : 2
+        # chroma sharpening currently only works for YV12 clips and awarpsharp based sharpening
+        take_chroma = fmt_in.LuIsEq("YV12||Y8") && aw_chroma>=3
+        (sa_aac_b && !take_chroma) ? last.MergeChroma(s_yxx8) : last
+        u_s = (sa_aac_b || take_chroma) ? 3 : 2
         (lsb) ? c16.Dither_limit_dif16(last.Lu8To16(tv_range, true, sa_aac_b).LuMatchCSP(c16),
                                      \ thr=1.0, elast=2.0, y=3, u=u_s, v=u_s) : last
     }
-    
+
     # Downscale
     LUResize(sw, sh, lsb_in=lsb, lsb_out=lsb_out, kernel=kernel_d, tv_range=tv_range, noring=false,
            \ cplace=cplace, dither_mode=dither, y=y_aa, u=u_aa, v=v_aa)
@@ -415,10 +423,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
        } else {
             c_yuvm = c_yuv
        }
-       
        c_yuvm.LuMerge(last, mclip, y, u, v, Undefined(), lsb_in, lsb_out, lsb_out, false)
-       
-
     } else {
         (y_aa==1 || u_aa==1 || v_aa==1) ? c_yuv.mt_logic(last, "and", y=y_lg, u=u_lg, v=v_lg) : last
     }
