@@ -477,7 +477,6 @@ function LuMerge(clip c1, clip c2, clip mask, int "y", int "u", int "v", bool "l
     # use luma plane of a Y8 mask clip for chroma channels by default if the chroma planes are going to be processed
     Assert(!(mask.IsY8 && !luma && (u==3 || v==3)), "LuMerge: mask is clip is missing the chroma plane(s) required "
                                                  \ +"to process the chroma plane(s) of the input clips." )
-
     
     if((c1.IsY8 && !c2.IsY8) || (!c1.IsY8 && c2.IsY8))
     {
@@ -596,12 +595,15 @@ function LuEdi(clip c, string type, bool "ver", bool "hor", int "field", bool "a
     yb = y>=3
     ub = u>=3
     vb = v>=3
-    
+
     c8 = lsb ? c.Lu16To8(tv_range, yb, ub, vb, -1) : c
-    
+
     plane_list = yb || (c.PixelType == "YV12" && (ub||vb)) ?"y,":""
     plane_list = plane_list + (LuIsEq(c.PixelType, "YV16||YV24") ? (ub?"u,":"") + (vb?"v,":"") : "")
-    
+
+    if (!(yb||ub||vb)) {
+        return c
+    }
     sblock = """
         hor_<PLANE> = hor
         if (current_plane.LuIsEq("u||v")) {
