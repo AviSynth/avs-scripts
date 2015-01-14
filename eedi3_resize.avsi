@@ -417,15 +417,15 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         {
             flatY = (mixed || !Ynnt) && Yt ? input.ConvertToY8().LuResize(ow, oh, src_left, src_top, src_width, src_height, lsb, noring=noring,
                                                                        \  tv_range=tv_range, kernel=kernel_y, y=Y32, u=1, v=1, curve=curve, gcor=gcor)
-                                         \ : input.LuBlankClip(width=ow, height=oh, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
+                                         \ : input.LuBlankClip(w=ow, h=oh, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
 
             flatU = (mixed || !Unnt) && Ut ? input.UToY8().LuResize(owc, ohc, src_leftc+cphfix, src_topc, src_widthc, src_heightc, lsb, noring=noring,
                                                                     \ tv_range=tv_range, kernel=kernel_c, y=U32, u=1)
-                                         \ : input.LuBlankClip(width=owc, height=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
+                                         \ : input.LuBlankClip(w=owc, h=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
 
             flatV = (mixed || !Vnnt) && Vt ? input.VToY8().LuResize(owc, ohc, src_leftc+cphfix, src_topc, src_widthc, src_heightc, lsb, noring=noring,
                                                                     \ tv_range=tv_range, kernel=kernel_c, y=U32, u=1)
-                                         \ : input.LuBlankClip(width=owc, height=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
+                                         \ : input.LuBlankClip(w=owc, h=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
 
             flat  = ProcY8 ? flatY : YToUV(flatU, flatV, flatY)
         }
