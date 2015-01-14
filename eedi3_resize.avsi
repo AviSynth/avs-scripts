@@ -2,14 +2,14 @@
 eedi3_resize v0.11
 ====================
 
-eedi3 based resizing script that allows to resize to arbitrary resolutions 
+eedi3 based resizing script that allows to resize to arbitrary resolutions
 while maintaining the correct image center and chroma location.
 ~~Shamelessly copy-pasted from~~ Based on mawen1250s nnedi3_resize16 v3.0.
 Can work both in 8-bit and 16-bit.
 
 Requirements:
 
-   * AviSynth+ 
+   * AviSynth+
    * Dither v1.24.0
    * eedi3 v0.9.2 (Firesledge mod)
    * Contra-Sharpen mod v3.4
@@ -23,7 +23,7 @@ Input Formats: Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
 Parameters:
 
    + [int] target_width, target_height (source width/height)
-       *   Resolution to resize to. Arbitrary resolutions are realized with Dither resizers. 
+       *   Resolution to resize to. Arbitrary resolutions are realized with Dither resizers.
    + [float] src_left (0), src_top (0), src_width(source width), src_height (source height)
        *   Parameters for cropping before resizing
    + [string] kernel_d (Spline36)
@@ -38,7 +38,7 @@ Parameters:
    + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0)
        *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
    + [float] ratiothr (1.125)
-       *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of 
+       *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of
            the eedi3+Dither_resize16 combo
    + [float] sharp (0)
        *   Strength of contra-sharpening applied to the upscaled clip
@@ -74,7 +74,7 @@ Parameters:
        *   Processing options for y/u/v planes:
            *  -x..0 : All the pixels of the plane will be set to -x (disables processing)
            *      1 : Disables processing of the plane (plane will contain garbage)
-           *      2 : Copies plane from the input clip (disables processing) 
+           *      2 : Copies plane from the input clip (disables processing)
            *      3 : Plane will processed
    + [bool] lsb_in (false), lsb_out (lsb_in)
        *   Tells the script whether the input/output clips are 16-bit stacked or 8 bit
@@ -88,7 +88,7 @@ Parameters:
        * Refer to the Dither docs (DitherPost) for more information on the various dithering modes
    + [clip] mclip (Undefined)
        *   mask clip to be used as prescreener for eedi3. Depending on the content, it usually results in a significant speed gain
-       
+
 */
 
 Function eedi3_resize(clip input, int "target_width", int "target_height", float "src_left", float "src_top",
@@ -112,16 +112,16 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     mdis     = Default(mdis,      35     )
     hp       = Default(hp,        false  )
     threads  = Default(threads,    0     )
-    
+
     # Parameters for Dither_resize16
     kernel_d = Default(kernel_d, "Spline36" )
     kernel_u = Default(kernel_u, "Spline64" )
     noring   = Default(noring,   False      )
 
-    
+
     # Post-Process
-    sharp    = Default(sharp,    0      )    
-    
+    sharp    = Default(sharp,    0      )
+
     # Parameters for input/output
     Y        = Default(Y,        3      )
     U        = Default(U,        3      )
@@ -129,18 +129,18 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     lsb_in   = Default(lsb_in,   False  )
     lsb_out  = Default(lsb_out,  lsb_in  )
     dither   = Default(dither,   6      )
-    
+
     sCSP     = input.eedi3_resize_GetCSP()
     Assert(sCSP.LuIsEq("Y8||YV12||YV16||YV24"), "eedi3_resize: only accept Y8, YV12, YV16, YV24 input")
-    
+
     output   = Default(output,   sCSP   )
- 
+
     ProcY8     = sCSP == "Y8" || output == "Y8"
     sCSP     = ProcY8 ? "YV24" : sCSP
-    OutRGB   = LuIsEq(output, "RGB||RGB24||RGB32||RGB48Y||RGB48YV12")    
+    OutRGB   = LuIsEq(output, "RGB||RGB24||RGB32||RGB48Y||RGB48YV12")
     oCSP     = OutRGB || ProcY8 ? "YV24" : output
     lsb      = OutRGB ? true : Default(lsb, lsb_in || lsb_out)
-    
+
     Y        = min(Y, 4)
     U        = ProcY8 ? 1 : min(U, 4)
     V        = ProcY8 ? 1 : min(V, 4)
@@ -159,14 +159,14 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     Y321     = Y > 1 ? 3 : Y
     U321     = U > 1 ? 3 : U
     V321     = V > 1 ? 3 : V
-    
+
     sw       = input.Width ()
     sh       = input.Height()
     sh       = lsb_in ? sh/2 : sh
     swc      = sCSP=="YV24" ? sw   : sw/2
     shc      = sCSP=="YV12" ? sh/2 : sh
     HD       = input.LuisHD()
-    
+
     matrix   = Default(matrix, HD ? "709" : "601")
     curve    = Yt ? Default(curve, "linear") : "linear"
     gcor     = Default(gcor, 1.0)
@@ -181,13 +181,13 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     Assert(!(output=="YV16" && ow!=owc*2), "eedi3_resize: width of YV16 output clip must be MOD2! Is: "+ String(ow))
     Assert(!(output=="YV12" && ow!=owc*2), "eedi3_resize: width of YV12 output clip must be MOD2! Is: "+ String(ow))
     Assert(!(output=="YV12" && oh!=ohc*2), "eedi3_resize: height of YV12 output clip must be MOD2! Is: "+ String(oh))
-    
+
     src_left    = Default(src_left,   0 )
     src_top     = Default(src_top,    0 )
     src_width   = Default(src_width,  sw)
     src_height  = Default(src_height, sh)
-    
-    
+
+
     # Pre-cropping/padding
     prel        = int(src_left/2) * 2
     pret        = int(src_top /2) * 2
@@ -195,7 +195,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     preb        = int((src_height> 0 ? -sh+src_top+src_height : src_height)/2) * 2
     prew        = sw - prel + prer
     preh        = sh - pret + preb
-    
+
     if (sCSP == "YV24")
     {
         swmod2      = sw  /2*2 == sw
@@ -214,7 +214,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         prew        = sw - prel + prer
         wpre        = prew < sw || !swmod4
     }
-    
+
     if (sCSP == "YV12") {
         shmod4      = sh  /4*4 == sh
         phmod4      = preh/4*4 == preh
@@ -232,53 +232,53 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         preh        = sh - pret + preb
         hpre        = preh < sh || !shmod2
     }
-    
+
     src_width   = src_width <=0 ? +sw-src_left+src_width : src_width
     src_height  = src_height<=0 ? +sh-src_top+src_height : src_height
     src_left    = wpre ? src_left-prel : src_left
     src_top     = hpre ? src_top -pret : src_top
-    
+
     src_leftc   = sCSP=="YV24" ? src_left      : src_left  /2.
     src_topc    = sCSP=="YV12" ? src_top   /2. : src_top
     src_widthc  = sCSP=="YV24" ? src_width     : src_width /2.
     src_heightc = sCSP=="YV12" ? src_height/2. : src_height
-    
-    
+
+
     # Scale & Shift Calculation
-    ratiothr = Default(ratiothr,   1.125) 
-    
+    ratiothr = Default(ratiothr,   1.125)
+
     yhratio  = float(ow ) / float(src_width  )
     yvratio  = float(oh ) / float(src_height )
     chratio  = float(owc) / float(src_widthc )
     cvratio  = float(ohc) / float(src_heightc)
-    
+
     enable   = yhratio!=1 || yvratio!=1 || chratio!=1 || cvratio!=1 ||
     \          src_width  !=int(src_width  ) || src_height !=int(src_height ) || src_widthc !=int(src_widthc ) || src_heightc!=int(src_heightc) ||
     \          src_left   !=int(src_left   ) || src_top    !=int(src_top    ) || src_leftc  !=int(src_leftc  ) || src_topc   !=int(src_topc   )
-    
+
     yhct     = yhratio>ratiothr ? Ceil( log(yhratio/ratiothr) / log(2) ) : 0
     yhrf     = int(Pow(2, yhct))
     yrhratio = yhratio/yhrf
     yvct     = yvratio>ratiothr ? Ceil( log(yvratio/ratiothr) / log(2) ) : 0
     yvrf     = int(Pow(2, yvct))
     yrvratio = yvratio/yvrf
-    
+
     yhshift  = yhrf>=2 ? 0.5 : 0
     yvshift  = yvrf>=2 ? 0.5 : 0
     yhfix    = -yhshift
     yvfix    = -yvshift
-    
+
     chct     = chratio>ratiothr ? Ceil( log(chratio/ratiothr) / log(2) ) : 0
     chrf     = int(Pow(2, chct))
     crhratio = chratio/chrf
     cvct     = cvratio>ratiothr ? Ceil( log(cvratio/ratiothr) / log(2) ) : 0
     cvrf     = int(Pow(2, cvct))
     crvratio = cvratio/cvrf
-    
+
     nonenny  = yhct<=0 && yvct<=0
     nonennc  = chct<=0 && cvct<=0
     nonenn   = nonenny || nonennc
-    
+
     Ynnt     = Yt&&!nonenny
     Unnt     = Ut&&!nonennc
     Vnnt     = Vt&&!nonennc
@@ -288,58 +288,58 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     Ynn      = Yt&&nonenny ? 2 : Y
     Unn      = Ut&&nonennc ? 2 : U
     Vnn      = Vt&&nonennc ? 2 : V
-    
+
     nnt      = Ynnt || Unnt || Vnnt
     mixed    = !nnt || !enable ? False : mixed
-    
-    
+
+
     # calculate chroma placement and center shift
-    if (cplace == "MPEG1") 
-    { 
+    if (cplace == "MPEG1")
+    {
         chshift = (chrf >= 2) ? 0.50 : 0
         cphfixe = 0
-        cphfix  = 0    
+        cphfix  = 0
     }
     else if (cplace == "MPEG2")
     {
-        if (oCSP == sCSP == "YV24") 
-        { 
+        if (oCSP == sCSP == "YV24")
+        {
             chshift = (chrf >= 2) ? 0.50 : 0
             cphfixe = 0
             cphfix  = 0
         }
-        else if (oCSP == "YV24") 
-        { 
+        else if (oCSP == "YV24")
+        {
             chshift = (chrf >= 2) ? 0.50-chrf/4. : -0.25
             cphfixe = 0
             cphfix  = 0.25
         }
         else if (sCSP == "YV24")
-        { 
+        {
             chshift = (chrf >= 2) ? 0.75 :  0.25
             cphfixe = 0.25-0.25/crhratio
             cphfix  = -0.5
         }
         else
-        { 
+        {
             chshift = (chrf >= 2) ? 0.75-chrf/4. :  0
             cphfixe = 0.25-0.25/crhratio
             cphfix  = 0.25-0.25/chratio
         }
     }
     else { Assert(false, "eedi3_resize: Chroma placement '" + cplace + "' not supported.") }
-    
+
     cvshift  = (cvrf >=2) ? 0.5 : 0
     chfix    = -chshift
     cvfix    = -cvshift
 
-    
+
     # Pre-process
-    
+
     input = (wpre || hpre) ? input.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
                                          \ kernel="point", lsb_in=lsb_in, lsb_out=lsb_in)
                          \ : input
-    
+
     if (lsb_in) {
         input8 = input.Lu16To8(tv_range, Yt, Ut, Vt, mixed ? -1 : dither)
         input = (lsb) ? input : input8
@@ -348,7 +348,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         input8 = input
         input = (lsb) ? input.Lu8To16(tv_range, True, True, True) : input
     }
-    
+
     # eedi3 upscale for edge area
     if (enable && nnt)
     {
@@ -357,7 +357,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         {
             mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? YtoUV(mclip, mclip, mclip).ConvertToYV12() : mclip.ConvertToYV12()
             edgenn  = input8.eedi3_resize_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, Ut, Vt, alpha, beta, gamma, nrad, mdis, hp, threads)
-            edgennY = (sharp > 0) ? edgenn.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1)           
+            edgennY = (sharp > 0) ? edgenn.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1)
                                 \ : edgenn
             edgennU = edgennY.UToY8()
             edgennV = edgennY.VToY8()
@@ -381,8 +381,8 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
             }
         }
     }
-    
-    
+
+
     # edge area resize & fix center shift
     #! 8bit in, lsb bit out
     if(enable && nnt)
@@ -390,19 +390,19 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         edgeY = (Ynnt) ? edgennY.LuResize(ow , oh , src_left *yhrf+yhfix, src_top *yvrf+yvfix, src_width *yhrf, tv_range=tv_range,
                                         \ src_height *yvrf, false, lsb, kernel=kernel_d, y=Y31, u=1, v=1, curve=curve, gcor=gcor)
                      \ : input.LuBlankClip(w=ow, h=oh, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
-           
+
     	edgeU   = (Unnt) ? edgennU.LuResize(owc, ohc, src_leftc*chrf+chfix+cphfixe, src_topc*cvrf+cvfix, tv_range=tv_range,
                                           \ src_widthc*chrf, src_heightc*cvrf, false, lsb, kernel=kernel_d, y=U31, u=1, v=1)
                        \ : input.LuBlankClip(w=owc, h=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
-                       
+
     	edgeV   = (Vnnt) ? edgennV.LuResize(owc, ohc, src_leftc*chrf+chfix+cphfixe, src_topc*cvrf+cvfix, tv_range=tv_range,
                                           \ src_widthc*chrf, src_heightc*cvrf, false, lsb, kernel=kernel_d, y=V31, u=1, v=1)
                        \ : input.LuBlankClip(w=owc, h=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
-    	
+
     	edge  = ProcY8 ? edgeY : YToUV(edgeU, edgeV, edgeY)
     }
-    
-    
+
+
     # flat area resize
     if(enable && (mixed || !(Ynnt && Unnt && Vnnt)))
     {
@@ -410,7 +410,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         kernel_c = (chratio>1||cvratio>1) ? kernel_u : kernel_d
         if((yhratio==chratio) && (yvratio==cvratio) && (!mixed || (Ynnt && Unnt && Vnnt)))
         {
-            flat = input.LuResize(ow, oh, src_left, src_top, src_width, src_height, lsb, cplace=cplace, noring=noring, 
+            flat = input.LuResize(ow, oh, src_left, src_top, src_width, src_height, lsb, cplace=cplace, noring=noring,
                                 \ tv_range=tv_range, kernel=kernel_y, y=Y32, u=U32, v=V32, curve=curve, gcor=gcor)
         }
         else
@@ -418,45 +418,45 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
             flatY = (mixed || !Ynnt) && Yt ? input.ConvertToY8().LuResize(ow, oh, src_left, src_top, src_width, src_height, lsb, noring=noring,
                                                                        \  tv_range=tv_range, kernel=kernel_y, y=Y32, u=1, v=1, curve=curve, gcor=gcor)
                                          \ : input.LuBlankClip(width=ow, height=oh, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
-            
+
             flatU = (mixed || !Unnt) && Ut ? input.UToY8().LuResize(owc, ohc, src_leftc+cphfix, src_topc, src_widthc, src_heightc, lsb, noring=noring,
                                                                     \ tv_range=tv_range, kernel=kernel_c, y=U32, u=1)
                                          \ : input.LuBlankClip(width=owc, height=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
-                                                                          
+
             flatV = (mixed || !Vnnt) && Vt ? input.VToY8().LuResize(owc, ohc, src_leftc+cphfix, src_topc, src_widthc, src_heightc, lsb, noring=noring,
                                                                     \ tv_range=tv_range, kernel=kernel_c, y=U32, u=1)
                                          \ : input.LuBlankClip(width=owc, height=ohc, pixel_type="Y8", color_yuv=$008080, lsb_in=lsb)
-            
+
             flat  = ProcY8 ? flatY : YToUV(flatU, flatV, flatY)
         }
     }
-    
+
     # merge & output
     if(enable)
     {
-        if (!nnt) { 
+        if (!nnt) {
             final = flat
         }
-        else if (mixed) { 
-            final = flat.LuLimitDif(edge, Undefined, thr, elast, Ynn, Unn, Vnn, lsb, lsb, lsb, tv_range) 
+        else if (mixed) {
+            final = flat.LuLimitDif(edge, Undefined, thr, elast, Ynn, Unn, Vnn, lsb, lsb, lsb, tv_range)
         }
-        else if ((Ynnt==Unnt && Unnt==Vnnt) || ProcY8) { 
+        else if ((Ynnt==Unnt && Unnt==Vnnt) || ProcY8) {
             final = edge
         }
-        else { 
+        else {
             final = mt_logic(edge, flat, "and", Y=Yt?Ynnt?2:4:1, U=Ut?Unnt?2:4:1, V=Vt?Vnnt?2:4:1)
         }
-        
+
     } else { # shift only
         final  = input.LUResize(ow, oh, src_left, src_top, src_width, src_height, lsb, kernel="point", y=Y, u=U, v=V)
     }
-    
-    final = (ProcY8 && output != "Y8") ? final.LuLut(y=2, u=-128, v=-128, lsb_in=lsb, scale=true) : final 
+
+    final = (ProcY8 && output != "Y8") ? final.LuLut(y=2, u=-128, v=-128, lsb_in=lsb, scale=true) : final
     return final.LuConvCsp(output, matrix, tv_range, lsb, lsb_out, mode=dither)
 }
 
 
-Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int "vfield", int "hfield", bool "Y", bool "U", bool "V", 
+Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int "vfield", int "hfield", bool "Y", bool "U", bool "V",
 \                              float "alpha", float "beta", float "gamma", int "nrad", int "mdis", bool "hp", int "threads", bool "honly")
 {
     vct      = Default(vct,      1      )
@@ -468,10 +468,10 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
     V        = Default(V,        False  )
     honly    = Default(honly,    False  )
     mclip    = Default(mclip,    Undefined())
-    
-    
+
+
     input
-    
+
     if(hct >= 1)
     {
         if (honly) {
@@ -482,27 +482,27 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
         }
 
         eedi3(hfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads)
-        
+
     	hct    = hct - 1
         honly  = hct >= 1
         hfield = 0
-        
+
         if (!honly) {
             TurnLeft()
             mclip = IsClip(mclip) ? mclip.TurnLeft() : Undefined()
         }
     }
-    
+
     if(vct >= 1 && !honly)
     {
         mclip = IsClip(mclip) ? mclip.Spline16Resize(last.Width, last.Height) : Undefined()
         eedi3(vfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads)
-        
+
     	vct    = vct - 1
         vfield = 0
     }
-    
-    
+
+
     return Y||U||V ? vct <= 0 && hct <= 0 ? last
     \                                     : last.eedi3_resize_rpow2(mclip, vct, hct, vfield, hfield, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, threads, honly)
     \              : input
@@ -517,8 +517,8 @@ Function eedi3_resize_GetCSP(clip c)
     \      c.IsYUY2   ? "YUY2"   :
     \      c.IsRGB32  ? "RGB32"  :
     \      c.IsRGB24  ? "RGB24"  : "Unknown"
-    
-    
+
+
     Function GetCSP_Y8_YV411(clip c) {
         try {
             c.UtoY
