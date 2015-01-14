@@ -90,7 +90,7 @@ function LuMergePlanes(clip c, string "ymode", float "ufac", float "vfac", int "
 {
     cplace = Default(cplace, "MPEG2")
     Assert(cplace == "MPEG2" || cplace== "MPEG1", "LuMergePlanes: Chroma placement " + cplace + " not supported")
-    cshift = (cplace=="MPEG2") ? 0.50 : 0
+    cshift = (cplace=="MPEG2") ? 0.25 : 0
 
     ufac = Default(ufac, 1.0)
     vfac = Default(vfac, 1.0)
