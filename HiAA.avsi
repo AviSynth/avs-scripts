@@ -384,7 +384,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
             c16 = c16.LUResize(sw, sh, lsb_in=lsb, cplace=cplace, tv_range=tv_range)
             # todo: fix inaccurate shift
             aWarp4(Resize8(sw*4, sh*4, 0.375*(width/sw), 0.375*(height/sh), kernel="Spline36", u=false, v=false),
-                 \ s_yxx8.ConvertToYV12().aSobel(aw_thresh,1).aBlur(aw_blur, 1, 1), aw_depth, 1, chroma=aw_chroma)
+                 \ s_yxx8.ConvertToYV12().aSobel(aw_thresh,1).aBlur(aw_blur, 1, 1), aw_depth, aw_chroma)
         }
         else if (sharp_s=="lsfmod") {
             ConvertToYV12()
