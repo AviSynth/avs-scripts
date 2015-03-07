@@ -394,7 +394,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
             ConvertToYV12()
             lsf_strength = Default(lsf_strength, 60)
             lsf_defaults = Default(lsf_defaults, "fast")
-            lsfmod(defaults=lsf_defaults, strength=lsf_strength, ss_x=1, ss_y=1, soothe=false)
+            lsfmod(defaults=lsf_defaults, strength=lsf_strength, ss_x=1, ss_y=1, soothe=false, edgemode = defined(mclip) ? 0 : 1)
         }
         else if (sharp_s=="msharpen") {
             ms_strength=Default(ms_strength, 50)
