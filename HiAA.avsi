@@ -143,7 +143,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
 \            float "e_fac", float "ee_alpha", float "ee_beta", float "ee_gamma", int "ee_nrad", int "ee_mdis", bool "ee_hp",
 \            int "nn_nsize", int "nn_nns", int "nn_qual", int "nn_etype", int "nn_pscrn", val "sa_aa", val "sa_aac",
 \            int "aw_thresh", int "aw_blur", int "aw_depth", int "aw_chroma", int "cs_strength", val "cs_limit", int "lsf_strength", string "lsf_defaults", 
-\            int "ms_threshold", int "ms_strength")
+\            int "ms_threshold", int "ms_strength", int "w", int "h", string "kernel_u")
 {
     aa_lst = "eedi3||eedi3+sangnom2||nnedi3||sangnom2"
     rsz_lst = "bicubic||catmull-rom||hermite||mitchell-netravali||robidoux||softcubic||blackman||lanczos||lanczos4||sinc||" 
@@ -153,6 +153,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     aa = Default(aa, "sangnom2")
     ss = Default(ss, "nnedi3")
     kernel_d = Default(kernel_d, "Spline36")
+    kernel_u = Default(kernel_u, "Spline36")
     
     Assert(aa.LuIsEq(aa_lst), "HiAA: unsupported antialiasing method '" + aa + "'.")
     
@@ -189,6 +190,9 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
 
     sw = c.Width
     sh = (lsb_in) ? c.Height/2 : c.Height
+    ow = Default(w, sw)
+    oh = Default(h, sh)
+    rescale = sw != ow || sh != oh
     ssw = int(round(sw*ssf/4.0)*4)
     ssh = int(round(sh*ssf/4.0)*4) 
     e_ssw = int(round(ssw*e_fac/4.0)*4)
@@ -413,7 +417,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     }
 
     # Downscale
-    LUResize(sw, sh, lsb_in=lsb, lsb_out=lsb_out, kernel=kernel_d, tv_range=tv_range, noring=false,
+    LUResize(ow, oh, lsb_in=lsb, lsb_out=lsb_out, kernel=kernel_d, tv_range=tv_range, noring=false,
            \ cplace=cplace, dither_mode=dither, y=y_aa, u=u_aa, v=v_aa)
 
     # Merge
@@ -423,7 +427,11 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
        } else {
             c_yuvm = c_yuv
        }
-       c_yuvm.LuMerge(last, mclip, y, u, v, Undefined(), lsb_in, lsb_out, lsb_out, false)
+
+       c_yuvm = rescale ? c_yuvm.LUResize(ow, oh, lsb_in=lsb_in, lsb_out=lsb_out, kernel=kernel_u, tv_range=tv_range, noring=false,
+           \ cplace=cplace, dither_mode=dither): c_yuvm
+            
+       c_yuvm.LuMerge(last, mclip.BilinearResize(ow, oh), y, u, v, Undefined(), rescale?lsb_out:lsb_in, lsb_out, lsb_out, false)
     } else {
         (y_aa==1 || u_aa==1 || v_aa==1) ? c_yuv.mt_logic(last, "and", y=y_lg, u=u_lg, v=v_lg) : last
     }
