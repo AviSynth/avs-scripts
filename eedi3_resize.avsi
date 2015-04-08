@@ -35,8 +35,10 @@ Parameters:
        *   Use non-ringing algorithms for Dither resizers
        *   Enabling this is not recommended, because eedi3_resize will use eedi3 for upscaling edges, anyway
        *   Downscaling with non-ringing resizers may result in blurring and aliasing artifacts
-   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0)
+   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0), vcheck(2),  vthreshmul(1.0), splinesclip(false)
        *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
+       *   vthreshmul multiplies defauld vthresh0/1/2 by specified amount
+       *   splinesclip determines if a clip upscaled with Dither_resize16_nr is passed to eedi3 as sclip
    + [float] ratiothr (1.125)
        *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of
            the eedi3+Dither_resize16 combo
@@ -93,8 +95,9 @@ Parameters:
 
 Function eedi3_resize(clip input, int "target_width", int "target_height", float "src_left", float "src_top",
 \                        float "src_width", float "src_height", string "kernel_d", string "kernel_u", bool "noring",
-\                        float "alpha", float "beta", float "gamma", int "nrad", int "mdis", bool "hp", int "threads", float "ratiothr",
-\                        float "sharp", bool "mixed", float "thr", float "elast",
+\                        float "alpha", float "beta", float "gamma", int "nrad", int "mdis", bool "hp", int "threads",
+\                        int "vcheck", float "vthreshmul", bool "splinesclip",
+\                        float "ratiothr", float "sharp", bool "mixed", float "thr", float "elast",
 \                        string "output", string "curve", float "gcor", string "matrix", bool "tv_range", string "cplace",
 \                        int "Y", int "U", int "V", bool "lsb_in", bool "lsb_out", bool "lsb", int "dither", clip "mclip")
 {
@@ -356,8 +359,8 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         if(yhct==chct && yvct==cvct && sCSP=="YV12")
         {
             mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? YtoUV(mclip, mclip, mclip).ConvertToYV12() : mclip.ConvertToYV12()
-            edgenn  = input8.eedi3_resize_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, Ut, Vt, alpha, beta, gamma, nrad, mdis, hp, threads)
-            edgennY = (sharp > 0) ? edgenn.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1)
+            edgenn  = input8.eedi3_resize_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, Ut, Vt, alpha, beta, gamma, nrad, mdis, hp, threads, vcheck, vthreshmul, splinesclip)
+            edgennY = (sharp > 0) ? edgenn.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1)           
                                 \ : edgenn
             edgennU = edgennY.UToY8()
             edgennV = edgennY.VToY8()
@@ -365,18 +368,18 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
         } else {
             if(Ynnt) {
                 mclip_p = Defined(mclip) ? mclip.ConvertToYV12() : Undefined()
-                edgennY = input8.ConvertToYV12().eedi3_resize_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, False, False, alpha, beta, gamma, nrad, mdis, hp, threads)
+                edgennY = input8.ConvertToYV12().eedi3_resize_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, False, False, alpha, beta, gamma, nrad, mdis, hp, threads, vcheck, vthreshmul, splinesclip)
                 edgennY = (sharp >0) ? edgennY.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1) : edgennY
                 edgennY = edgennY.ConvertToY8()
             }
             if (Unnt) {
                 mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? mclip_p : mclip.UtoY()
-                edgennU = input8.UToY().eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Ut, False, False, alpha, beta, gamma, nrad, mdis, hp, threads)
+                edgennU = input8.UToY().eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Ut, False, False, alpha, beta, gamma, nrad, mdis, hp, threads, vcheck, vthreshmul, splinesclip)
                        \ .ConvertToY8()
             }
             if (Vnnt) {
                 mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? mclip_p : mclip.VtoY()
-                edgennV = input8.VToY().eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Vt, False, False, alpha, beta, gamma, nrad, mdis, hp, threads)
+                edgennV = input8.VToY().eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Vt, False, False, alpha, beta, gamma, nrad, mdis, hp, threads, vcheck, vthreshmul, splinesclip)
                        \        .ConvertToY8()
             }
         }
@@ -456,8 +459,9 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
 }
 
 
-Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int "vfield", int "hfield", bool "Y", bool "U", bool "V",
-\                              float "alpha", float "beta", float "gamma", int "nrad", int "mdis", bool "hp", int "threads", bool "honly")
+Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int "vfield", int "hfield",
+\                              bool "Y", bool "U", bool "V", float "alpha", float "beta", float "gamma", int "nrad", int "mdis", 
+\                              bool "hp",  int "threads", int "vcheck", float "vthreshmul", bool "splinesclip", bool "honly")
 {
     vct      = Default(vct,      1      )
     hct      = Default(hct,      1      )
@@ -468,7 +472,11 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
     V        = Default(V,        False  )
     honly    = Default(honly,    False  )
     mclip    = Default(mclip,    Undefined())
-
+    vthreshmul  = Default(vthreshmul, 1)
+    splinesclip = Default(splinesclip, False)
+    vthresh0 = vthreshmul*32
+    vthresh1 = vthreshmul*64
+    vthresh2 = vthreshmul*4
 
     input
 
@@ -481,7 +489,10 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
             mclip = IsClip(mclip) ? mclip.TurnRight() : Undefined()
         }
 
-        eedi3(hfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads)
+        sc = dither_convert_8_to_16().dither_resize16nr(width(),height()*2,src_top = (hfield==0) ? -0.25 : 0.25).ditherpost(mode=-1)
+		sclip = splinesclip ? sc : Undefined()
+        eedi3(hfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads,
+        \     vcheck=vcheck, vthresh0=vthresh0, vthresh1=vthresh1, vthresh2=vthresh2, sclip=sclip)
 
     	hct    = hct - 1
         honly  = hct >= 1
@@ -498,7 +509,10 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
     if(vct >= 1 && !honly)
     {
         mclip = IsClip(mclip) ? mclip.Spline16Resize(last.Width, last.Height) : Undefined()
-        eedi3(vfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads)
+        sc = dither_convert_8_to_16().dither_resize16nr(width(),height()*2,src_top = (vfield==0) ? -0.25 : 0.25).ditherpost(mode=-1)
+		sclip = splinesclip ? sc : Undefined()
+        eedi3(vfield, True, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, mclip=mclip, threads=threads,
+        \     vcheck=vcheck, vthresh0=vthresh0, vthresh1=vthresh1, vthresh2=vthresh2, sclip = sclip)
 
     	vct    = vct - 1
         vfield = 0
@@ -506,7 +520,8 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
 
 
     return Y||U||V ? vct <= 0 && hct <= 0 ? last
-    \                                     : last.eedi3_resize_rpow2(mclip, vct, hct, vfield, hfield, Y, U, V, alpha, beta, gamma, nrad, mdis, false, threads, honly)
+    \                                     : last.eedi3_resize_rpow2(mclip, vct, hct, vfield, hfield, Y, U, V, alpha, beta, gamma, 1, mdis, hp,
+    \                                                               threads, vcheck, vthreshmul, splinesclip, honly)
     \              : input
 }
 
