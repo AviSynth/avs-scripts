@@ -109,8 +109,8 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     beta     = Default(beta,       0.2   )
     gamma    = Default(gamma,      15.0  )
     nrad     = Default(nrad,       3     )
-    mdis     = Default(mdis,      35     )
-    hp       = Default(hp,        false  )
+    mdis     = Default(mdis,       20    )
+    hp       = Default(hp,         false )
     threads  = Default(threads,    0     )
 
     # Parameters for Dither_resize16
@@ -127,7 +127,7 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     U        = Default(U,        3      )
     V        = Default(V,        3      )
     lsb_in   = Default(lsb_in,   False  )
-    lsb_out  = Default(lsb_out,  lsb_in  )
+    lsb_out  = Default(lsb_out,  lsb_in )
     dither   = Default(dither,   6      )
 
     sCSP     = input.eedi3_resize_GetCSP()
@@ -489,6 +489,8 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
 
         if (!honly) {
             TurnLeft()
+            mdis  = min(2*mdis, 40)
+            hp    = false
             mclip = IsClip(mclip) ? mclip.TurnLeft() : Undefined()
         }
     }
@@ -504,7 +506,7 @@ Function eedi3_resize_rpow2(clip input, clip "mclip", int "vct", int "hct", int 
 
 
     return Y||U||V ? vct <= 0 && hct <= 0 ? last
-    \                                     : last.eedi3_resize_rpow2(mclip, vct, hct, vfield, hfield, Y, U, V, alpha, beta, gamma, nrad, mdis, hp, threads, honly)
+    \                                     : last.eedi3_resize_rpow2(mclip, vct, hct, vfield, hfield, Y, U, V, alpha, beta, gamma, nrad, mdis, false, threads, honly)
     \              : input
 }
 
