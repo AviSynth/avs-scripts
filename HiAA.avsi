@@ -329,9 +329,9 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     {
         # why were we doing this again?
         #mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
-        eedi3_resize(last, e_ssw, e_ssh, 0, 0, Undefined, Undefined, kernel_d, Undefined, false, ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp, 
-        \              ee_threads, 1.0, 0, false, Undefined, 1.3, e_fmt_out, Undefined, Undefined, matrix, tv_range, cplace,
-        \               y_ss, u_aa, v_aa, (ssf != 1.0)?lsb:lsb_in, lsb, lsb, Undefined, mclip_ss)
+        eedi3_resize(last, e_ssw, e_ssh, kernel_d=kernel_d, alpha=ee_alpha, beta=ee_beta, gamma=ee_gamma, nrad=ee_nrad, mdis=ee_mdis, hp=ee_hp, 
+        \            threads=ee_threads, ratiothr=1.0, mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
+        \            y=y_ss, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb_out=lsb, lsb=lsb, mclip=mclip_ss)
     }
     else if (LuIsEq(aa, "nnedi3"))
     {
