@@ -339,11 +339,12 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
 
     # Pre-process
 
+    Assert(!Defined(mclip) || LuIsSameRes(input, mclip, lsb_in, false), "eedi3_resize: mclip doesn't match source clip!")
     input = (wpre || hpre) ? input.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
                                          \ kernel="point", lsb_in=lsb_in, lsb_out=lsb_in)
                          \ : input
-    mclip = (wpre || hpre) ? mclip.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
-                                         \ kernel="point", lsb_in=false, lsb_out=false)
+    mclip = (Defined(mclip) && (wpre || hpre)) ? mclip.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
+                                         \ kernel="point")
                          \ : mclip
 
     if (lsb_in) {
