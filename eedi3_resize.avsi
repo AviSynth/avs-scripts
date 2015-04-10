@@ -342,6 +342,9 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
     input = (wpre || hpre) ? input.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
                                          \ kernel="point", lsb_in=lsb_in, lsb_out=lsb_in)
                          \ : input
+    mclip = (wpre || hpre) ? mclip.LUResize(wpre?prew:sw, hpre?preh:sh, wpre?prel:0, hpre?pret:0, wpre?prew:sw, hpre?preh:sh,
+                                         \ kernel="point", lsb_in=false, lsb_out=false)
+                         \ : mclip
 
     if (lsb_in) {
         input8 = input.Lu16To8(tv_range, Yt, Ut, Vt, mixed ? -1 : dither)
