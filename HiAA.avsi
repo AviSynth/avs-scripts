@@ -74,6 +74,8 @@ Parameters:
        *   Using anything other than multiples of two will incur an additional performance hit
    + [various] ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp
        *   Eedi3 parameters (refer to eedi3 docs for more information)
+   + [various] nn_nsize, nn_nns, nn_qual, nn_etype, nn_pscrn
+       *   Nnedi3 parameters (refer to nnedi3 docs for more information)
    + [bool/string] sharp (false)
        *   Sharpening applied to the supersampled clip after antialiasing
        *   Can be True/False or one of the following methods:
@@ -184,6 +186,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
     u_lg = (u == 3) ? 4 : u
     v_lg = (v == 3) ? 4 : v
     mthr = Default(mthr, 30)
+    nn_nsize = Default(nn_nsize, 2)
     sa_aac = Default(sa_aac, proc_chroma)
     e_fmt_out = (!proc_chroma) ? "Y8" : FmtIsYUV(fmt_out) ? fmt_out : "YV24"
     noring = Default(noring, false) # Todo: make noring a val and make it work like in Resize8, write wrapper for dither_resize16
@@ -330,7 +333,7 @@ function HiAA(clip c, string "aa", string "ss", float "ssf", bool "lsb_in", bool
         # why were we doing this again?
         #mclip = mclip.LuMatchCSP(c_yuv, tv_range=false)
         eedi3_resize(last, e_ssw, e_ssh, kernel_d=kernel_d, alpha=ee_alpha, beta=ee_beta, gamma=ee_gamma, nrad=ee_nrad, mdis=ee_mdis, hp=ee_hp, 
-        \            threads=ee_threads, ratiothr=1.0, mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
+        \            vthresh2=1, threads=ee_threads, ratiothr=1.0, mixed=false, output=e_fmt_out, matrix=matrix, tv_range=tv_range, cplace=cplace,
         \            y=y_ss, u=u_aa, v=v_aa, lsb_in=(ssf != 1.0)?lsb:lsb_in, lsb_out=lsb, lsb=lsb, mclip=mclip_ss)
     }
     else if (LuIsEq(aa, "nnedi3"))
