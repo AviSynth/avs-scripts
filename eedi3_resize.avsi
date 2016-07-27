@@ -37,8 +37,8 @@ Parameters:
        *   Downscaling with non-ringing resizers may result in blurring and aliasing artifacts
    + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0), vcheck(2),  vthreshmul(1.0), vthresh2(4.0) splinesclip(true)
        *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
-       *   vthreshmul multiplies default vthresh0/1 by specified amount
-       *   splinesclip determines if a clip upscaled with Dither_resize16_nr is passed to eedi3 as sclip
+       *   vthreshmul multiplies default vthresh0 and vthresh1 by specified amount
+       *   splinesclip determines if a clip upscaled with Dither_resize16_nr  is passed to eedi3 as sclip
    + [float] ratiothr (1.125)
        *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of
            the eedi3+Dither_resize16 combo
@@ -372,23 +372,26 @@ Function eedi3_resize(clip input, int "target_width", int "target_height", float
             edgennV = edgennY.VToY8()
             edgennY = edgennY.ConvertToY8()
         } else {
+            mclip_p = Defined(mclip) ? mclip.ConvertToYV12() : Undefined()
             if(Ynnt) {
-                mclip_p = Defined(mclip) ? mclip.ConvertToYV12() : Undefined()
                 assert(Defined(input8), string(Yt))
                 edgennY = input8.ConvertToYV12().eedi3_resize_rpow2(mclip_p, yvct, yhct, 1, 1, Yt, False, False, alpha, beta, gamma,
                         \                                       nrad, mdis, hp, threads, vcheck, vthreshmul, vthresh2, splinesclip)
                 edgennY = (sharp >0) ? edgennY.CSmod(chroma=False, ss_w=1.00, ss_h=1.00, preblur=-4, Smethod=1, kernel=6, strength=sharp, Soothe=-1) : edgennY
                 edgennY = edgennY.ConvertToY8()
             }
+            mclip_p = (Defined(mclip) && input8.IsYV16 && mclip.IsY8 && (Unnt || Vnnt)) ? mclip.BilinearResize(mclip.Width/2, mclip.Height).ConvertToYV12() : mclip_p
             if (Unnt) {
-                mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? mclip_p : mclip.UtoY()
-                edgennU = input8.UToY().eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Ut, False, False, alpha, beta, gamma,
-                        \                                nrad, mdis, hp, threads, vcheck, vthreshmul, vthresh2, splinesclip).ConvertToY8()
+                mclip_p = (!Defined(mclip) || mclip.IsY8) ?  mclip_p : mclip_p.IsYV12 ? mclip.UtoY() : mclip.UtoY8.ConvertToYV12()
+                edgennU = input8.IsYV12 ? input8.UToY() : input8.UToY8().ConvertToYV12()
+                edgennU = edgennU.eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Ut, False, False, alpha, beta, gamma,
+                        \                            nrad, mdis, hp, threads, vcheck, vthreshmul, vthresh2, splinesclip).ConvertToY8()
             }
             if (Vnnt) {
-                mclip_p = !Defined(mclip) ? Undefined() : (mclip.IsY8) ? mclip_p : mclip.VtoY()
-                edgennV = input8.VToY().eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Vt, False, False, alpha, beta, gamma,
-                        \                                nrad, mdis, hp, threads, vcheck, vthreshmul, vthresh2, splinesclip).ConvertToY8()
+                mclip_p = (!Defined(mclip) || mclip.IsY8) ?  mclip_p : mclip_p.IsYV12 ? mclip.VtoY() : mclip.VtoY8.ConvertToYV12()
+                edgennV = input8.IsYV12 ? input8.UToY() : input8.VToY8().ConvertToYV12()
+                edgennV = edgennV.eedi3_resize_rpow2(mclip_p, cvct, chct, 1, 1, Vt, False, False, alpha, beta, gamma,
+                        \                            nrad, mdis, hp, threads, vcheck, vthreshmul, vthresh2, splinesclip).ConvertToY8()
             }
         }
     }
