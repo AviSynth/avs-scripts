@@ -40,10 +40,10 @@ Parameters:
        *   Use non-ringing algorithms for Dither resizers
        *   Enabling this is not recommended, because eedi3_resize will use eedi3 for upscaling edges, anyway
        *   Downscaling with non-ringing resizers may result in blurring and aliasing artifacts
-   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (20), hp (false), threads (0), vcheck(2),  vthreshmul(1.0), vthresh2(4.0) splinesclip(true)
+   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (20), hp (false), threads (0), vcheck(2), vthreshmul(1.0), vthresh2(4.0) splinesclip(true)
        *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
        *   vthreshmul multiplies default vthresh0 and vthresh1 by specified amount
-       *   splinesclip determines if a clip upscaled with Dither_resize16_nr  is passed to eedi3 as sclip
+       *   splinesclip determines if a clip upscaled with deringed Spline36Resize is passed to eedi3 as sclip
    + [float] ratiothr (1.125)
        *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of 
            the eedi3+Dither_resize16 combo
