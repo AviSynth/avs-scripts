@@ -28,7 +28,7 @@ Input Formats: Y8/YV12/YV16/YV24 (8-bit or 16-bit stacked)
 Parameters:
 
    + [int] target_width, target_height (source width/height)
-       *   Resolution to resize to. Arbitrary resolutions are realized with Dither resizers. 
+       *   Resolution to resize to. Arbitrary resolutions are realized with Dither resizers.
    + [float] src_left (0), src_top (0), src_width(source width), src_height (source height)
        *   Parameters for cropping before resizing
    + [string] kernel_d (Spline36)
@@ -40,10 +40,10 @@ Parameters:
        *   Use non-ringing algorithms for Dither resizers
        *   Enabling this is not recommended, because eedi3_resize will use eedi3 for upscaling edges, anyway
        *   Downscaling with non-ringing resizers may result in blurring and aliasing artifacts
-   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (35), hp (false), threads (0), vcheck(2),  vthreshmul(1.0), splinesclip(false)
+   + [various] alpha (0.4), beta (0.2), gamma (15.0), nrad (3), mdis (20), hp (false), threads (0), vcheck(2), vthreshmul(1.0), vthresh2(4.0) splinesclip(true)
        *   Parameters passed to eedi3. Refer to the eedi3 docs for more information
-       *   vthreshmul multiplies defauld vthresh0/1/2 by specified amount
-       *   splinesclip determines if a clip upscaled with Dither_resize16_nr is passed to eedi3 as sclip
+       *   vthreshmul multiplies default vthresh0 and vthresh1 by specified amount
+       *   splinesclip determines if a clip upscaled with deringed Spline36Resize is passed to eedi3 as sclip
    + [float] ratiothr (1.125)
        *   When the scaling ratio is below this threshold, eedi3_resize will only use Dither resizers instead of 
            the eedi3+Dither_resize16 combo
@@ -173,6 +173,8 @@ Parameters:
        *   Using anything other than multiples of two will incur an additional performance hit
    + [various] ee_alpha, ee_beta, ee_gamma, ee_nrad, ee_mdis, ee_hp
        *   Eedi3 parameters (refer to eedi3 docs for more information)
+   + [various] nn_nsize, nn_nns, nn_qual, nn_etype, nn_pscrn
+       *   Nnedi3 parameters (refer to nnedi3 docs for more information)
    + [bool/string] sharp (false)
        *   Sharpening applied to the supersampled clip after antialiasing
        *   Can be True/False or one of the following methods:
